@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>플라밍고 체스 — Flamingo vs Black Swan</title>
+<script src="https://cdn.jsdelivr.net/npm/babylonjs@7.54.3/babylon.js"></script>
+<style>
+  :root{
+    --gold:#d7b46a; --gold-hi:#f3d99a; --gold-dim:#9a7d43;
+    --ink:#17121d; --plum:#241a2e; --rose:#e8a0b4; --rose-hi:#ffc4d1;
+    --panel:rgba(24,17,30,.82); --panel-line:rgba(215,180,106,.38);
+    --serif:'Nanum Myeongjo','AppleMyungjo','Noto Serif KR',Georgia,'Times New Roman',serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#17121d}
+  body{font-family:var(--serif);color:#f0e8dc;-webkit-font-smoothing:antialiased}
+  #renderCanvas{width:100%;height:100%;display:block;touch-action:none;outline:none}
+
+  /* ---------- shared UI ---------- */
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:30}
+  .hidden{display:none !important}
+  button{font-family:var(--serif);cursor:pointer}
+  .gbtn{
+    background:linear-gradient(160deg,#f3d99a 0%,#d7b46a 45%,#a8853f 100%);
+    color:#2a2010;border:1px solid #f7e6bb;border-radius:10px;
+    padding:13px 42px;font-size:19px;font-weight:700;letter-spacing:.35em;text-indent:.35em;
+    box-shadow:0 6px 22px rgba(215,180,106,.35),inset 0 1px 0 rgba(255,255,255,.5);
+    transition:transform .15s ease,box-shadow .15s ease;
+  }
+  .gbtn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(215,180,106,.5),inset 0 1px 0 rgba(255,255,255,.5)}
+  .obtn{
+    background:rgba(215,180,106,.08);color:var(--gold);border:1px solid var(--panel-line);
+    border-radius:9px;padding:10px 26px;font-size:15px;letter-spacing:.2em;text-indent:.2em;
+    transition:background .15s ease;
+  }
+  .obtn:hover{background:rgba(215,180,106,.2)}
+
+  /* ---------- title screen ---------- */
+  #titleScreen{
+    background:radial-gradient(120% 90% at 50% 8%,#4a2c4e 0%,#2c1c38 42%,#171021 100%);
+    flex-direction:column;text-align:center;
+  }
+  #titleScreen::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(42% 30% at 50% 88%, rgba(232,160,180,.16), transparent 70%),
+      radial-gradient(30% 22% at 18% 22%, rgba(215,180,106,.10), transparent 70%),
+      radial-gradient(30% 22% at 82% 22%, rgba(215,180,106,.10), transparent 70%);
+  }
+  .title-emblem{font-size:64px;line-height:1;margin-bottom:14px;filter:drop-shadow(0 4px 14px rgba(232,160,180,.45))}
+  #titleScreen h1{
+    font-size:clamp(44px,7.5vw,84px);font-weight:800;letter-spacing:.16em;text-indent:.16em;
+    background:linear-gradient(180deg,#ffe9f0 5%,var(--rose) 45%,#c76a86 90%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 3px 18px rgba(232,160,180,.3));
+  }
+  .title-sub{
+    margin-top:10px;font-size:15px;letter-spacing:.62em;text-indent:.62em;color:var(--gold);
+    text-transform:uppercase;opacity:.95;
+  }
+  .title-rule{
+    width:min(430px,70vw);height:22px;margin:26px auto 20px;position:relative;opacity:.9;
+    background:
+      linear-gradient(90deg,transparent,var(--gold-dim) 20%,var(--gold) 50%,var(--gold-dim) 80%,transparent) center/100% 1px no-repeat;
+  }
+  .title-rule::after{
+    content:"◆";position:absolute;left:50%;top:50%;transform:translate(-50%,-52%);
+    color:var(--gold);font-size:12px;background:transparent;padding:0 12px;
+  }
+  .diff-label{font-size:14px;letter-spacing:.4em;text-indent:.4em;color:#cbb9d8;margin-bottom:14px}
+  .diff-row{display:flex;gap:12px;justify-content:center;margin-bottom:34px}
+  .diff-btn{
+    min-width:110px;padding:12px 8px;border-radius:10px;font-size:17px;letter-spacing:.25em;text-indent:.25em;
+    background:rgba(240,232,220,.05);color:#e7d9c4;border:1px solid rgba(215,180,106,.3);
+    transition:all .16s ease;
+  }
+  .diff-btn small{display:block;font-size:11px;letter-spacing:.12em;text-indent:.12em;color:#a08fae;margin-top:5px}
+  .diff-btn.sel{
+    background:linear-gradient(170deg,rgba(232,160,180,.24),rgba(215,180,106,.16));
+    border-color:var(--gold);color:#ffe9f0;box-shadow:0 0 22px rgba(232,160,180,.25) inset,0 4px 18px rgba(0,0,0,.3);
+  }
+  #statLine{margin-top:30px;font-size:14px;letter-spacing:.22em;color:#a08fae}
+  #statLine b{color:var(--gold)}
+
+  /* ---------- HUD ---------- */
+  #hud{position:absolute;inset:0;pointer-events:none;z-index:10}
+  #topBar{
+    position:absolute;top:0;left:0;right:0;height:58px;display:flex;align-items:center;
+    justify-content:space-between;padding:0 18px;
+    background:linear-gradient(180deg,rgba(19,12,24,.85),rgba(19,12,24,0));
+  }
+  #gameTitle{font-size:19px;letter-spacing:.3em;color:var(--rose-hi);text-shadow:0 2px 12px rgba(0,0,0,.6)}
+  #gameTitle span{color:var(--gold);font-size:13px;letter-spacing:.22em;margin-left:10px}
+  #topBtns{display:flex;gap:8px;pointer-events:auto}
+  .ibtn{
+    width:42px;height:42px;border-radius:9px;font-size:17px;line-height:1;
+    background:var(--panel);color:var(--gold);border:1px solid var(--panel-line);
+    backdrop-filter:blur(6px);transition:all .15s ease;position:relative;
+  }
+  .ibtn:hover{background:rgba(215,180,106,.22);color:var(--gold-hi)}
+  .ibtn:disabled{opacity:.35;cursor:default}
+  .ibtn.is-muted{color:rgba(215,180,106,.42)}
+  .ibtn.is-muted::after{
+    content:"";position:absolute;left:11px;right:11px;top:50%;height:2px;border-radius:2px;
+    background:currentColor;transform:rotate(-42deg);pointer-events:none;
+  }
+
+  /* ---------- camera control dock (angle + zoom) ---------- */
+  #camDock{
+    position:absolute;left:16px;bottom:16px;display:grid;
+    grid-template-columns:repeat(3,40px);grid-auto-rows:40px;gap:7px;
+    pointer-events:auto;z-index:12;
+  }
+  #camDock .lbl{
+    grid-column:1/4;font-size:10px;letter-spacing:.26em;color:var(--gold);
+    opacity:.72;text-align:center;margin-bottom:1px;
+  }
+  .cbtn{
+    width:40px;height:40px;border-radius:9px;font-size:16px;line-height:1;
+    background:var(--panel);color:var(--gold);border:1px solid var(--panel-line);
+    backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;
+    user-select:none;-webkit-user-select:none;touch-action:none;
+    transition:background .15s ease,color .15s ease,transform .08s ease;
+  }
+  .cbtn:hover{background:rgba(215,180,106,.22);color:var(--gold-hi)}
+  .cbtn:active{transform:scale(.9);background:rgba(232,160,180,.28);color:#ffe9f0}
+  @media (max-width:900px){
+    #camDock{left:auto;right:12px;bottom:56px;grid-template-columns:repeat(3,34px);grid-auto-rows:34px;gap:5px}
+    .cbtn{width:34px;height:34px;font-size:14px}
+    #camDock .lbl{display:none}
+  }
+
+  #sidePanel{
+    position:absolute;top:66px;right:12px;width:238px;bottom:14px;display:flex;flex-direction:column;gap:10px;
+    pointer-events:auto;
+  }
+  .card{
+    background:var(--panel);border:1px solid var(--panel-line);border-radius:12px;
+    backdrop-filter:blur(8px);padding:11px 13px;box-shadow:0 8px 26px rgba(0,0,0,.35);
+  }
+  .card h3{
+    font-size:12px;letter-spacing:.4em;text-indent:.4em;color:var(--gold);font-weight:700;
+    border-bottom:1px solid rgba(215,180,106,.2);padding-bottom:7px;margin-bottom:8px;text-align:center;
+  }
+  .tray{min-height:26px;font-size:21px;letter-spacing:2px;line-height:1.35;word-break:break-all}
+  .tray.pink{color:var(--rose-hi);text-shadow:0 1px 6px rgba(232,160,180,.5)}
+  .tray.blk{color:#8f86a3;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+  .tray:empty::after{content:"—";color:#5c5470;font-size:13px;letter-spacing:0}
+  #moveCard{flex:1;display:flex;flex-direction:column;min-height:80px}
+  #moveList{flex:1;overflow-y:auto;font-size:14.5px;line-height:1.85;scrollbar-width:thin;letter-spacing:.02em}
+  #moveList table{width:100%;border-collapse:collapse}
+  #moveList td{padding:0 4px}
+  #moveList td.num{color:#8d7f9c;width:30px;text-align:right}
+  #moveList td.w{color:#ffd9e2}
+  #moveList td.b{color:#bfb4cf}
+  #moveList tr.last td.hl{background:rgba(215,180,106,.16);border-radius:5px;color:var(--gold-hi)}
+  #moveList:empty::after{content:"아직 수가 없습니다";color:#5c5470;font-size:12.5px;letter-spacing:.15em}
+
+  #statusPill{
+    position:absolute;left:50%;bottom:20px;transform:translateX(-50%);
+    background:var(--panel);border:1px solid var(--panel-line);border-radius:999px;
+    padding:10px 30px;font-size:15.5px;letter-spacing:.28em;text-indent:.28em;color:#f0e8dc;
+    backdrop-filter:blur(8px);box-shadow:0 8px 24px rgba(0,0,0,.4);white-space:nowrap;
+    transition:all .25s ease;
+  }
+  #statusPill.check{color:#ff7d7d;border-color:rgba(255,125,125,.55);box-shadow:0 0 26px rgba(255,90,90,.3)}
+  #statusPill.think .dots::after{content:"···";animation:think 1.2s steps(4,end) infinite}
+  @keyframes think{0%{content:""}25%{content:"·"}50%{content:"··"}75%{content:"···"}}
+
+  /* ---------- promotion picker ---------- */
+  #promoModal{background:rgba(12,8,18,.66);backdrop-filter:blur(4px)}
+  .promo-box{
+    background:linear-gradient(170deg,#2e2138,#1c1426);border:1px solid var(--gold-dim);
+    border-radius:16px;padding:26px 30px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6);
+  }
+  .promo-box h2{font-size:17px;letter-spacing:.5em;text-indent:.5em;color:var(--gold);margin-bottom:20px}
+  .promo-row{display:flex;gap:14px}
+  .promo-btn{
+    width:96px;padding:16px 0 13px;border-radius:12px;border:1px solid rgba(215,180,106,.35);
+    background:rgba(240,232,220,.05);color:#ffe9f0;transition:all .15s ease;
+  }
+  .promo-btn .glyph{display:block;color:var(--rose-hi);filter:drop-shadow(0 3px 10px rgba(232,160,180,.5))}
+  .promo-btn .glyph svg{width:44px;height:52px;display:block;margin:0 auto;fill:currentColor}
+  .promo-btn .nm{display:block;margin-top:8px;font-size:14px;letter-spacing:.3em;text-indent:.3em;color:#d9c8a8}
+  .promo-btn:hover{
+    background:linear-gradient(170deg,rgba(232,160,180,.25),rgba(215,180,106,.15));
+    border-color:var(--gold);transform:translateY(-3px);box-shadow:0 10px 26px rgba(0,0,0,.45);
+  }
+
+  /* ---------- game over ---------- */
+  #overModal{background:rgba(12,8,18,.7);backdrop-filter:blur(5px)}
+  .over-box{
+    text-align:center;background:linear-gradient(170deg,#2e2138,#1a1224);
+    border:1px solid var(--gold-dim);border-radius:20px;padding:44px 64px;
+    box-shadow:0 24px 70px rgba(0,0,0,.65);
+  }
+  .over-box .emblem{font-size:52px;margin-bottom:8px}
+  #overResult{
+    font-size:52px;font-weight:800;letter-spacing:.25em;text-indent:.25em;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold) 60%,#a8853f);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .over-box.lose #overResult{background:linear-gradient(180deg,#cfc4de,#8f86a3 70%);-webkit-background-clip:text;background-clip:text}
+  #overReason{margin:14px 0 6px;font-size:16px;letter-spacing:.3em;text-indent:.3em;color:#cbb9d8}
+  #overStats{font-size:13px;letter-spacing:.2em;color:#8d7f9c;margin-bottom:26px}
+  .over-btns{display:flex;gap:12px;justify-content:center}
+
+  #thinkVeil{position:absolute;inset:0;z-index:5;display:none}
+  body.locked #thinkVeil{display:block}
+
+  @media (max-width:760px){
+    #sidePanel{width:172px;top:60px}
+    .tray{font-size:17px}
+    #gameTitle span{display:none}
+    .promo-btn{width:72px}
+    .promo-btn .glyph svg{width:34px;height:40px}
+    .over-box{padding:34px 30px}
+    #overResult{font-size:38px}
+  }
+  /* portrait / narrow phones: restack the HUD so the full board stays visible —
+     trays become a slim strip under the top bar, 기보 becomes a bottom sheet */
+  @media (max-width:600px), (orientation:portrait) and (max-width:900px){
+    #sidePanel{top:56px;left:8px;right:8px;bottom:auto;width:auto;gap:0}
+    #trayCard{display:flex;align-items:center;gap:10px;padding:6px 12px;border-radius:10px}
+    #trayCard h3{border:none;padding:0;margin:0;font-size:10px;letter-spacing:.18em;text-indent:0;white-space:nowrap}
+    #trayCard .tray-div{display:none}
+    #trayCard .tray{flex:1;min-height:22px;font-size:15px;line-height:1.2;letter-spacing:1px}
+    #moveCard{
+      position:fixed;left:8px;right:8px;bottom:8px;top:auto;flex:none;min-height:0;
+      max-height:40px;overflow:hidden;transition:max-height .28s ease;
+    }
+    #moveCard.open{max-height:34vh}
+    #moveCard h3{cursor:pointer}
+    #moveCard h3::after{content:" ▴";font-size:9px;color:var(--gold-dim)}
+    #moveCard.open h3::after{content:" ▾"}
+    #statusPill{bottom:56px;padding:8px 22px;font-size:13.5px}
+  }
+</style>
+</head>
+<body>
+<canvas id="renderCanvas"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="topBar">
+    <div id="gameTitle">플라밍고 체스 <span>FLAMINGO vs BLACK SWAN</span></div>
+    <div id="topBtns">
+      <button class="ibtn" id="btnUndo"  title="한 수 무르기">↶</button>
+      <button class="ibtn" id="btnView"  title="시점 초기화">◎</button>
+      <button class="ibtn" id="btnMute"  title="소리 켜기/끄기">♪</button>
+      <button class="ibtn" id="btnNew"   title="새 게임">✦</button>
+    </div>
+  </div>
+  <div id="camDock">
+    <div class="lbl">시점 · 확대</div>
+    <button class="cbtn" data-cam="ol" title="왼쪽으로 돌리기">⟲</button>
+    <button class="cbtn" data-cam="up" title="위에서 내려보기">▲</button>
+    <button class="cbtn" data-cam="or" title="오른쪽으로 돌리기">⟳</button>
+    <button class="cbtn" data-cam="zo" title="축소">－</button>
+    <button class="cbtn" data-cam="dn" title="낮게 보기">▼</button>
+    <button class="cbtn" data-cam="zi" title="확대">＋</button>
+  </div>
+  <div id="sidePanel">
+    <div class="card" id="trayCard">
+      <h3>포획한 기물</h3>
+      <div class="tray blk"  id="trayByPlayer"></div>
+      <div class="tray-div" style="height:1px;background:rgba(215,180,106,.15);margin:7px 0"></div>
+      <div class="tray pink" id="trayByAI"></div>
+    </div>
+    <div class="card" id="moveCard">
+      <h3>기보</h3>
+      <div id="moveList"></div>
+    </div>
+  </div>
+  <div id="statusPill">당신의 차례</div>
+</div>
+<div id="thinkVeil"></div>
+
+<div id="titleScreen" class="overlay">
+  <div style="position:relative;padding:0 20px">
+    <div class="title-emblem">🦩</div>
+    <h1>플라밍고 체스</h1>
+    <div class="title-sub">Flamingo &nbsp;vs&nbsp; Black Swan</div>
+    <div class="title-rule"></div>
+    <div class="diff-label">난이도를 선택하세요</div>
+    <div class="diff-row">
+      <button class="diff-btn" data-d="0">쉬움<small>산책하듯</small></button>
+      <button class="diff-btn sel" data-d="1">보통<small>우아하게</small></button>
+      <button class="diff-btn" data-d="2">어려움<small>흑조의 발톱</small></button>
+    </div>
+    <button class="gbtn" id="btnStart">대국 시작</button>
+    <div id="statLine"></div>
+  </div>
+</div>
+
+<div id="promoModal" class="overlay hidden">
+  <div class="promo-box">
+    <h2>승격할 기물</h2>
+    <div class="promo-row">
+      <!-- silhouettes traced from the game's own bird sculpts (not generic chess glyphs) -->
+      <button class="promo-btn" data-p="q"><span class="glyph"><svg viewBox="0 0 60 72" aria-hidden="true">
+        <ellipse cx="29" cy="66" rx="16" ry="4"/>
+        <ellipse cx="26" cy="49" rx="12" ry="11"/>
+        <path d="M26 50 C 29 40, 24 30, 27 19" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="27" cy="15" r="6"/>
+        <path d="M32 14 L43 18 L32 20 Z"/>
+        <path d="M21 8 L23 2 L26 7 L28 1 L31 7 L33 2 L35 8 Z"/>
+        <path d="M34 52 C 46 47, 54 36, 57 26 C 51 33, 44 38, 36 43 Z"/>
+      </svg></span><span class="nm">퀸</span></button>
+      <button class="promo-btn" data-p="r"><span class="glyph"><svg viewBox="0 0 60 72" aria-hidden="true">
+        <ellipse cx="30" cy="66" rx="16" ry="4"/>
+        <path d="M22 64 L38 64 L35 36 L25 36 Z"/>
+        <ellipse cx="30" cy="34" rx="13" ry="4.5"/>
+        <ellipse cx="30" cy="24" rx="8" ry="7"/>
+        <circle cx="33" cy="13" r="4.5"/>
+        <path d="M30 24 C 32 20, 31 17, 32 14" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M37 12 L45 15 L37 17 Z"/>
+      </svg></span><span class="nm">룩</span></button>
+      <button class="promo-btn" data-p="b"><span class="glyph"><svg viewBox="0 0 60 72" aria-hidden="true">
+        <ellipse cx="30" cy="66" rx="15" ry="4"/>
+        <ellipse cx="30" cy="50" rx="11" ry="10"/>
+        <path d="M30 51 L30 21" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="30" cy="16" r="6.5"/>
+        <path d="M35 17 L45 20 L35 22 Z"/>
+        <path d="M30 12 L37 3 L26 6 Z"/>
+      </svg></span><span class="nm">비숍</span></button>
+      <button class="promo-btn" data-p="n"><span class="glyph"><svg viewBox="0 0 60 72" aria-hidden="true">
+        <ellipse cx="30" cy="66" rx="16" ry="4"/>
+        <ellipse cx="29" cy="51" rx="12" ry="10"/>
+        <path d="M29 52 C 22 42, 42 36, 36 24 C 33 18, 28 20, 30 24" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="33" cy="19" r="5.5"/>
+        <path d="M38 18 L48 22 L38 24 Z"/>
+        <path d="M31 12 L34 6 L36 13 Z"/>
+      </svg></span><span class="nm">나이트</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="overModal" class="overlay hidden">
+  <div class="over-box" id="overBox">
+    <div class="emblem" id="overEmblem">🦩</div>
+    <div id="overResult">승리</div>
+    <div id="overReason">체크메이트</div>
+    <div id="overStats"></div>
+    <div class="over-btns">
+      <button class="gbtn" id="btnAgain" style="padding:11px 34px;font-size:16px">다시하기</button>
+      <button class="obtn" id="btnHome">메인으로</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/dist/esm/chess.js';
+
+/* ================= error capture (debug) ================= */
+window.__errors = [];
+window.onerror = (msg, src, ln) => {
+  window.__errors.push(msg + ' @' + ln);
+  document.body.dataset.err = window.__errors.join(' | ');
+};
+window.addEventListener('unhandledrejection', e => {
+  window.__errors.push('rejection: ' + (e.reason && e.reason.message || e.reason));
+  document.body.dataset.err = window.__errors.join(' | ');
+});
+
+/* ================= params / persistence ================= */
+const params    = new URLSearchParams(location.search);
+const P_FEN     = params.get('fen');
+const P_MOVES   = params.get('moves');
+const P_NOSOUND = params.has('nosound');
+const P_NOAI    = params.has('noai') || params.has('moves') || params.has('selftest');
+const P_AUTO    = params.has('autostart') || !!P_FEN || !!P_MOVES || params.has('selftest') || params.has('showpromo');
+
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v);}catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+let muted = P_NOSOUND ? true : store.get('fc_mute', false);
+let stats = store.get('fc_stats', { w:0, l:0, d:0 });
+let difficulty = params.has('difficulty') ? +params.get('difficulty') : store.get('fc_diff', 1);
+difficulty = Math.min(2, Math.max(0, difficulty|0));
+
+/* ================= sound (WebAudio synth) ================= */
+let actx = null;
+function ac(){ if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return actx; }
+function env(g, t0, a, peak, dur){
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(peak, t0 + a);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+}
+function tone(freq, dur, type='sine', peak=0.15, when=0, bend=0){
+  const c = ac(); if(!c || muted) return;
+  const t0 = c.currentTime + when;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t0);
+  if(bend) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + bend), t0 + dur);
+  env(g, t0, 0.004, peak, dur);
+  o.connect(g).connect(c.destination);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function noiseBurst(dur, peak=0.12, when=0, low=800){
+  const c = ac(); if(!c || muted) return;
+  const t0 = c.currentTime + when;
+  const n = Math.floor(c.sampleRate * dur);
+  const buf = c.createBuffer(1, n, c.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<n;i++) d[i] = (Math.random()*2-1) * (1 - i/n);
+  const s = c.createBufferSource(); s.buffer = buf;
+  const f = c.createBiquadFilter(); f.type='lowpass'; f.frequency.value = low;
+  const g = c.createGain(); env(g, t0, 0.002, peak, dur);
+  s.connect(f).connect(g).connect(c.destination);
+  s.start(t0);
+}
+const SFX = {
+  move(){ tone(190, 0.09, 'triangle', 0.22, 0, -60); noiseBurst(0.05, 0.07, 0, 2400); },
+  capture(){ tone(95, 0.16, 'sine', 0.3, 0, -30); noiseBurst(0.14, 0.16, 0, 1200); tone(600, 0.1, 'triangle', 0.05, 0.02, 300); },
+  check(){ tone(880, 0.3, 'sine', 0.14); tone(1318.5, 0.34, 'sine', 0.1, 0.09); },
+  promote(){ [660, 880, 1108, 1318, 1760].forEach((f,i)=>tone(f, 0.22, 'sine', 0.1, i*0.07)); },
+  select(){ tone(520, 0.05, 'triangle', 0.06); },
+  ui(){ tone(420, 0.06, 'triangle', 0.07); },
+  win(){ [523,659,784,1046,784,1046].forEach((f,i)=>tone(f, 0.3, 'triangle', 0.13, i*0.13)); tone(1568, 0.7, 'sine', 0.08, 0.78); },
+  lose(){ [392,349,311,261].forEach((f,i)=>tone(f, 0.42, 'sine', 0.13, i*0.2)); },
+  draw(){ tone(440, 0.35, 'sine', 0.1); tone(440, 0.35, 'sine', 0.1, 0.3); }
+};
+
+/* ================= chess state ================= */
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+let chess = new Chess();
+let mode = 'title';           // title | playing | over
+let playerColor = 'w', aiColor = 'b';
+let thinking = false, aiToken = 0;
+let baseFen = START_FEN;
+let startedFromCustomFen = false;   // trays: history-based for normal games, board-diff for FEN loads
+
+const inCheckNow = () => chess.inCheck ? chess.inCheck() : chess.isCheck();
+
+/* ================= AI (minimax + alpha-beta, worker) ================= */
+const AI_CORE = `
+const VAL = { p:100, n:320, b:330, r:500, q:900, k:0 };
+const PST = {
+p:[0,0,0,0,0,0,0,0, 50,50,50,50,50,50,50,50, 10,10,20,30,30,20,10,10, 5,5,10,25,25,10,5,5,
+   0,0,0,20,20,0,0,0, 5,-5,-10,0,0,-10,-5,5, 5,10,10,-20,-20,10,10,5, 0,0,0,0,0,0,0,0],
+n:[-50,-40,-30,-30,-30,-30,-40,-50, -40,-20,0,0,0,0,-20,-40, -30,0,10,15,15,10,0,-30,
+   -30,5,15,20,20,15,5,-30, -30,0,15,20,20,15,0,-30, -30,5,10,15,15,10,5,-30,
+   -40,-20,0,5,5,0,-20,-40, -50,-40,-30,-30,-30,-30,-40,-50],
+b:[-20,-10,-10,-10,-10,-10,-10,-20, -10,0,0,0,0,0,0,-10, -10,0,5,10,10,5,0,-10,
+   -10,5,5,10,10,5,5,-10, -10,0,10,10,10,10,0,-10, -10,10,10,10,10,10,10,-10,
+   -10,5,0,0,0,0,5,-10, -20,-10,-10,-10,-10,-10,-10,-20],
+r:[0,0,0,0,0,0,0,0, 5,10,10,10,10,10,10,5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5,
+   -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, 0,0,0,5,5,0,0,0],
+q:[-20,-10,-10,-5,-5,-10,-10,-20, -10,0,0,0,0,0,0,-10, -10,0,5,5,5,5,0,-10,
+   -5,0,5,5,5,5,0,-5, 0,0,5,5,5,5,0,-5, -10,5,5,5,5,5,0,-10,
+   -10,0,5,0,0,0,0,-10, -20,-10,-10,-5,-5,-10,-10,-20],
+k:[-30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30, -20,-30,-30,-40,-40,-30,-30,-20, -10,-20,-20,-20,-20,-20,-20,-10,
+   20,20,0,0,0,0,20,20, 20,30,10,0,0,10,30,20]
+};
+function evalBoard(ch){
+  const b = ch.board(); let s = 0;
+  for(let r=0;r<8;r++) for(let f=0;f<8;f++){
+    const pc = b[r][f]; if(!pc) continue;
+    const idx = pc.color === 'w' ? r*8+f : (7-r)*8+f;
+    const v = VAL[pc.type] + PST[pc.type][idx];
+    s += pc.color === 'w' ? v : -v;
+  }
+  return s;
+}
+function orderMoves(ms){
+  ms.sort((a,b)=>((b.captured?VAL[b.captured]*10-VAL[b.piece]:0)+(b.promotion?800:0))
+               -((a.captured?VAL[a.captured]*10-VAL[a.piece]:0)+(a.promotion?800:0)));
+  return ms;
+}
+function negamax(ch, depth, alpha, beta, sign){
+  if(ch.isCheckmate()) return -99999 - depth;
+  if(ch.isStalemate() || ch.isDraw()) return 0;
+  if(depth === 0) return sign * evalBoard(ch);
+  const ms = orderMoves(ch.moves({ verbose:true }));
+  let best = -Infinity;
+  for(const m of ms){
+    ch.move(m);
+    const v = -negamax(ch, depth-1, -beta, -alpha, -sign);
+    ch.undo();
+    if(v > best) best = v;
+    if(v > alpha) alpha = v;
+    if(alpha >= beta) break;
+  }
+  return best;
+}
+function bestMove(fen, depth, noise, ChessCtor){
+  const ch = new ChessCtor(fen);
+  const sign = ch.turn() === 'w' ? 1 : -1;
+  const ms = orderMoves(ch.moves({ verbose:true }));
+  if(!ms.length) return null;
+  let alpha = -Infinity, picked = null, pickedScore = -Infinity;
+  for(const m of ms){
+    ch.move(m);
+    let v = -negamax(ch, depth-1, -Infinity, -alpha, -sign);
+    ch.undo();
+    if(v > alpha) alpha = v;
+    v += (Math.random()*2 - 1) * noise;
+    if(v > pickedScore){ pickedScore = v; picked = m; }
+  }
+  return picked && { from:picked.from, to:picked.to, promotion:picked.promotion || undefined, san:picked.san };
+}
+`;
+const DIFF = [ {depth:1, noise:70, name:'쉬움'}, {depth:2, noise:14, name:'보통'}, {depth:3, noise:0, name:'어려움'} ];
+
+let aiWorker = null, workerOK = false;
+const bestMoveSync = new Function('Chess','fen','depth','noise',
+  AI_CORE + '\nreturn bestMove(fen, depth, noise, Chess);');
+try{
+  const src = "import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/dist/esm/chess.js';\n"
+    + AI_CORE
+    + "\nself.onmessage = e => { const d = e.data; let mv = null; try{ mv = bestMove(d.fen, d.depth, d.noise, Chess); }catch(err){} postMessage({ id:d.id, mv }); };"
+    + "\npostMessage({ ready:true });";
+  aiWorker = new Worker(URL.createObjectURL(new Blob([src], { type:'text/javascript' })), { type:'module' });
+  aiWorker.onmessage = e => {
+    workerOK = true;
+    document.body.dataset.worker = 'ok';
+    if(e.data.ready) return;
+    if(e.data.id !== aiToken) return;
+    onAIResult(e.data.mv);
+  };
+  aiWorker.onerror = e => {
+    workerOK = false;
+    window.__errors.push('worker: ' + ((e && e.message) || 'load error'));
+    document.body.dataset.err = window.__errors.join(' | ');
+    if(e && e.preventDefault) e.preventDefault();
+  };
+}catch(e){ aiWorker = null; }
+
+let workerDead = false;
+function requestAI(){
+  const d = DIFF[difficulty];
+  aiToken++;
+  const id = aiToken, fen = chess.fen();
+  if(aiWorker && !workerDead){
+    aiWorker.postMessage({ id, fen, depth:d.depth, noise:d.noise });
+    // safety: fall back to the main-thread search if the worker stays silent
+    setTimeout(()=>{ if(thinking && id === aiToken && mode === 'playing'){
+      if(!workerOK) workerDead = true;   // never came alive → stop waiting on it in future
+      const mv = bestMoveSync(Chess, fen, d.depth, d.noise); if(id === aiToken) onAIResult(mv);
+    }}, workerOK ? 20000 : 6000);
+  }else{
+    setTimeout(()=>{ if(id === aiToken){ const mv = bestMoveSync(Chess, fen, d.depth, d.noise); if(id === aiToken) onAIResult(mv); } }, 60);
+  }
+}
+
+/* ================= Babylon scene ================= */
+const canvas = document.getElementById('renderCanvas');
+const engine = new BABYLON.Engine(canvas, true, { stencil:true, antialias:true });
+// HiDPI/Retina: render at native device resolution (capped at 2x so the
+// post-process pipeline stays affordable on 3x mobile screens).
+function applyHiDPI(){ engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2)); }
+applyHiDPI();
+const scene = new BABYLON.Scene(engine);
+scene.clearColor = new BABYLON.Color4(0.075, 0.05, 0.1, 1);
+
+const camera = new BABYLON.ArcRotateCamera('cam', -Math.PI/2, 1.04, 13.6, new BABYLON.Vector3(0.85, 0.1, -0.35), scene);
+camera.lowerRadiusLimit = 8; camera.upperRadiusLimit = 24;
+camera.lowerBetaLimit = 0.32; camera.upperBetaLimit = 1.32;
+camera.wheelDeltaPercentage = 0.015;
+camera.pinchDeltaPercentage = 0.012;
+camera.panningSensibility = 0;   // no panning — keeps board framed
+camera.attachControl(canvas, true);
+/* Responsive framing: in portrait the desktop framing (x offset for the side
+   panel + vertical-fixed FOV) crops the board, so fit by WIDTH instead and
+   center the target (the HUD restacks out of the way below 900px portrait). */
+let camPortrait = null;
+function applyCameraFraming(){
+  const portrait = engine.getRenderWidth() < engine.getRenderHeight();
+  if(portrait === camPortrait) return;   // only re-frame when orientation flips
+  camPortrait = portrait;
+  camera.fovMode = portrait ? BABYLON.Camera.FOVMODE_HORIZONTAL_FIXED : BABYLON.Camera.FOVMODE_VERTICAL_FIXED;
+  camera.setTarget(new BABYLON.Vector3(portrait ? 0 : 0.85, 0.1, -0.35));
+  camera.alpha = CAM_HOME.alpha; camera.beta = CAM_HOME.beta; camera.radius = CAM_HOME.radius;
+}
+// Camera rotates with middle/right mouse OR touch (one-finger orbit on empty
+// space, two-finger pinch zoom). Left mouse drag stays reserved for pieces,
+// and an active piece drag always suppresses the camera.
+const camPointers = camera.inputs.attached.pointers;
+if(camPointers){
+  camPointers.buttons = [0, 1, 2];   // touch pointerdown always has button 0 — must be admitted
+  const downButton = {};             // pointerId -> button at pointerdown
+  canvas.addEventListener('pointerdown', e => { downButton[e.pointerId] = e.button; }, true);
+  canvas.addEventListener('pointerup',   e => { delete downButton[e.pointerId]; }, true);
+  canvas.addEventListener('pointercancel', e => { delete downButton[e.pointerId]; }, true);
+  const origTouch = camPointers.onTouch.bind(camPointers);
+  camPointers.onTouch = (p, offsetX, offsetY) => {
+    if(drag) return;                                                   // piece drag owns the gesture
+    if(p && p.type === 'mouse' && downButton[p.pointerId] === 0) return; // left mouse = pieces only
+    origTouch(p, offsetX, offsetY);
+  };
+  const origMulti = camPointers.onMultiTouch.bind(camPointers);
+  camPointers.onMultiTouch = (...a) => { if(drag) return; origMulti(...a); };
+}
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+const CAM_HOME = { alpha:-Math.PI/2, beta:1.04, radius:13.6 };
+applyCameraFraming();
+function resetView(){
+  const fps = 60;
+  const mk = (prop, to) => {
+    const a = new BABYLON.Animation('cam_'+prop, prop, fps, BABYLON.Animation.ANIMATIONTYPE_FLOAT);
+    a.setKeys([{frame:0, value:camera[prop]}, {frame:30, value:to}]);
+    const e2 = new BABYLON.CubicEase(); e2.setEasingMode(BABYLON.EasingFunction.EASINGMODE_EASEINOUT);
+    a.setEasingFunction(e2); return a;
+  };
+  scene.beginDirectAnimation(camera, [mk('alpha', CAM_HOME.alpha), mk('beta', CAM_HOME.beta), mk('radius', CAM_HOME.radius)], 0, 30, false);
+}
+
+/* On-screen camera nudge (angle + zoom). Pure DOM buttons driving the camera
+   through the render loop — deliberately never touches the canvas pointer
+   pipeline that is reserved for piece dragging. Tap = a small step, hold =
+   continuous glide; everything stays inside the existing radius/beta limits. */
+let camVel = null;
+const _camClamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+scene.onBeforeRenderObservable.add(() => {
+  if(!camVel) return;
+  const dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
+  camera.alpha += camVel.a * dt;
+  camera.beta   = _camClamp(camera.beta   + camVel.b * dt, camera.lowerBetaLimit   + 0.001, camera.upperBetaLimit   - 0.001);
+  camera.radius = _camClamp(camera.radius + camVel.r * dt, camera.lowerRadiusLimit,        camera.upperRadiusLimit);
+});
+// up ▲ = higher/top-down view = smaller beta; zoom in ＋ = smaller radius
+const CAM_MOVES = {
+  ol: { a:-1.4, imp:{ a:-0.06 } }, or: { a:1.4, imp:{ a:0.06 } },
+  up: { b:-0.9, imp:{ b:-0.05 } }, dn: { b:0.9, imp:{ b:0.05 } },
+  zi: { r:-9,   imp:{ r:-0.6  } }, zo: { r:9,   imp:{ r:0.6  } },
+};
+function camPress(k){
+  const m = CAM_MOVES[k]; if(!m) return;
+  scene.stopAnimation(camera);          // cancel any resetView glide in flight
+  const imp = m.imp || {};
+  camera.alpha += imp.a || 0;
+  camera.beta   = _camClamp(camera.beta   + (imp.b || 0), camera.lowerBetaLimit   + 0.001, camera.upperBetaLimit   - 0.001);
+  camera.radius = _camClamp(camera.radius + (imp.r || 0), camera.lowerRadiusLimit,        camera.upperRadiusLimit);
+  camVel = { a:m.a || 0, b:m.b || 0, r:m.r || 0 };
+}
+function camRelease(){ camVel = null; }
+
+/* ---------- lights & shadows ---------- */
+const hemi = new BABYLON.HemisphericLight('hemi', new BABYLON.Vector3(0.2, 1, 0.1), scene);
+hemi.intensity = 0.35;
+hemi.diffuse = new BABYLON.Color3(0.75, 0.62, 0.72);
+hemi.groundColor = new BABYLON.Color3(0.22, 0.12, 0.2);
+
+const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.45, -1, 0.5), scene);
+sun.position = new BABYLON.Vector3(9, 16, -10);
+sun.intensity = 3.1;
+sun.diffuse = new BABYLON.Color3(1.0, 0.87, 0.72);
+
+const rim = new BABYLON.DirectionalLight('rim', new BABYLON.Vector3(0.5, -0.6, -0.75), scene);
+rim.intensity = 0.7;
+rim.diffuse = new BABYLON.Color3(0.85, 0.55, 0.75);
+
+const shadowGen = new BABYLON.ShadowGenerator(2048, sun);
+shadowGen.useBlurExponentialShadowMap = true;
+shadowGen.blurKernel = 32;
+shadowGen.darkness = 0.45;
+shadowGen.bias = 0.0012;
+
+/* ---------- procedural textures ---------- */
+function marbleTexture(name, base, veinA, veinB, warm){
+  const size = 512;
+  const dt = new BABYLON.DynamicTexture(name, size, scene, true);
+  const ctx = dt.getContext();
+  ctx.fillStyle = base; ctx.fillRect(0, 0, size, size);
+  // soft cloudy patches
+  for(let i=0;i<26;i++){
+    const x = Math.random()*size, y = Math.random()*size, r = 40 + Math.random()*120;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, warm); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+  }
+  // veins — layered wandering strokes
+  for(let i=0;i<15;i++){
+    ctx.beginPath();
+    let x = Math.random()*size, y = Math.random()*size;
+    ctx.moveTo(x, y);
+    const segs = 7 + (Math.random()*6|0);
+    for(let s=0;s<segs;s++){
+      const nx = x + (Math.random()*170 - 85), ny = y + (Math.random()*170 - 85);
+      ctx.quadraticCurveTo(x + (Math.random()*70-35), y + (Math.random()*70-35), nx, ny);
+      x = nx; y = ny;
+    }
+    ctx.strokeStyle = Math.random() < 0.5 ? veinA : veinB;
+    ctx.lineWidth = 0.6 + Math.random()*1.9;
+    ctx.globalAlpha = 0.16 + Math.random()*0.24;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  // fine speckle
+  for(let i=0;i<2600;i++){
+    ctx.fillStyle = Math.random()<0.5 ? 'rgba(255,255,255,0.045)' : 'rgba(60,40,50,0.05)';
+    ctx.fillRect(Math.random()*size, Math.random()*size, 1.3, 1.3);
+  }
+  dt.update();
+  return dt;
+}
+function skyTexture(){
+  const w = 1024, h = 512;
+  const dt = new BABYLON.DynamicTexture('skyTex', { width:w, height:h }, scene, true);
+  const ctx = dt.getContext();
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0.00, '#160f26');
+  g.addColorStop(0.30, '#3a2246');
+  g.addColorStop(0.55, '#7c3f63');
+  g.addColorStop(0.74, '#c96f7e');
+  g.addColorStop(0.86, '#eeb08c');
+  g.addColorStop(1.00, '#f6d3a7');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  // dusk sun glow
+  const sg = ctx.createRadialGradient(w*0.5, h*0.82, 8, w*0.5, h*0.82, 260);
+  sg.addColorStop(0, 'rgba(255,231,186,0.95)');
+  sg.addColorStop(0.35, 'rgba(255,196,150,0.4)');
+  sg.addColorStop(1, 'rgba(255,196,150,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0, 0, w, h);
+  // faint stars up top
+  for(let i=0;i<130;i++){
+    const y = Math.random()*h*0.34;
+    ctx.fillStyle = 'rgba(255,245,230,' + (0.12 + Math.random()*0.5*(1-y/(h*0.35))) + ')';
+    ctx.fillRect(Math.random()*w, y, 1.4, 1.4);
+  }
+  dt.update();
+  return dt;
+}
+function featherTexture(){
+  const s = 64;
+  const dt = new BABYLON.DynamicTexture('featherTex', s, scene, true);
+  const ctx = dt.getContext();
+  ctx.clearRect(0, 0, s, s);
+  ctx.translate(s/2, s/2); ctx.rotate(0.5);
+  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 26);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.6, 'rgba(255,255,255,0.7)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(0, 0, 9, 24, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(0, -26); ctx.lineTo(0, 26); ctx.stroke();
+  dt.update();
+  dt.hasAlpha = true;
+  return dt;
+}
+
+/* ---------- environment: dusk dome + IBL probe ---------- */
+const skyDome = BABYLON.MeshBuilder.CreateSphere('sky', { diameter:180, segments:24, sideOrientation:BABYLON.Mesh.BACKSIDE }, scene);
+const skyMat = new BABYLON.StandardMaterial('skyMat', scene);
+skyMat.backFaceCulling = false;
+skyMat.disableLighting = true;
+skyMat.emissiveTexture = skyTexture();
+skyMat.diffuseColor = skyMat.specularColor = BABYLON.Color3.Black();
+skyDome.material = skyMat;
+skyDome.isPickable = false;
+
+const probe = new BABYLON.ReflectionProbe('envProbe', 256, scene, true);
+probe.renderList.push(skyDome);
+probe.refreshRate = BABYLON.RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+scene.environmentTexture = probe.cubeTexture;
+scene.environmentIntensity = 1.25;
+
+/* ---------- studio floor ---------- */
+const floor = BABYLON.MeshBuilder.CreateDisc('floor', { radius:60, tessellation:64 }, scene);
+floor.rotation.x = Math.PI/2; floor.position.y = -0.16;
+const floorMat = new BABYLON.PBRMaterial('floorMat', scene);
+floorMat.albedoColor = new BABYLON.Color3(0.045, 0.032, 0.055);
+floorMat.metallic = 0.1; floorMat.roughness = 0.32;
+floorMat.environmentIntensity = 1.5;
+floor.material = floorMat;
+floor.receiveShadows = true;
+floor.isPickable = false;
+
+/* ---------- materials ---------- */
+const goldMat = new BABYLON.PBRMaterial('gold', scene);
+goldMat.albedoColor = new BABYLON.Color3(1.0, 0.82, 0.36);
+goldMat.metallic = 0.92; goldMat.roughness = 0.3;
+goldMat.environmentIntensity = 0.65;          // keep the dusk-pink env from tinting gold salmon
+goldMat.emissiveColor = new BABYLON.Color3(0.09, 0.055, 0.012); // faint inner warmth
+
+const ivoryMat = new BABYLON.PBRMaterial('ivory', scene);
+ivoryMat.albedoTexture = marbleTexture('ivoryTex', '#f6ead6', 'rgba(160,125,100,0.8)', 'rgba(205,175,140,0.7)', 'rgba(255,252,244,0.6)');
+ivoryMat.metallic = 0.0; ivoryMat.roughness = 0.16;
+ivoryMat.clearCoat.isEnabled = true; ivoryMat.clearCoat.intensity = 0.4; ivoryMat.clearCoat.roughness = 0.12;
+
+const roseMat = new BABYLON.PBRMaterial('rose', scene);
+roseMat.albedoTexture = marbleTexture('roseTex', '#c07f8d', 'rgba(105,45,58,0.85)', 'rgba(245,205,212,0.8)', 'rgba(210,125,140,0.5)');
+roseMat.metallic = 0.0; roseMat.roughness = 0.16;
+roseMat.clearCoat.isEnabled = true; roseMat.clearCoat.intensity = 0.4; roseMat.clearCoat.roughness = 0.12;
+
+const pinkPBR = new BABYLON.PBRMaterial('flamingo', scene);
+pinkPBR.albedoColor = new BABYLON.Color3(0.97, 0.48, 0.55);
+pinkPBR.metallic = 0.05; pinkPBR.roughness = 0.34;
+pinkPBR.clearCoat.isEnabled = true; pinkPBR.clearCoat.intensity = 0.55; pinkPBR.clearCoat.roughness = 0.22;
+pinkPBR.sheen.isEnabled = true;
+pinkPBR.sheen.color = new BABYLON.Color3(1.0, 0.78, 0.82);
+pinkPBR.sheen.intensity = 0.5;
+
+const blackPBR = new BABYLON.PBRMaterial('swan', scene);
+blackPBR.albedoColor = new BABYLON.Color3(0.028, 0.026, 0.038);
+blackPBR.metallic = 0.55; blackPBR.roughness = 0.28;
+blackPBR.clearCoat.isEnabled = true; blackPBR.clearCoat.intensity = 0.5; blackPBR.clearCoat.roughness = 0.18;
+if(blackPBR.iridescence){ blackPBR.iridescence.isEnabled = true; blackPBR.iridescence.intensity = 0.45; }
+
+/* ---------- board ---------- */
+const FILES = 'abcdefgh';
+const sqToPos = sq => new BABYLON.Vector3(FILES.indexOf(sq[0]) - 3.5, 0, (+sq[1]) - 1 - 3.5);
+const posToSq = (x, z) => {
+  const f = Math.round(x + 3.5), r = Math.round(z + 3.5);
+  if(f < 0 || f > 7 || r < 0 || r > 7) return null;
+  return FILES[f] + (r + 1);
+};
+
+const boardRoot = new BABYLON.TransformNode('boardRoot', scene);
+// gold under-plate (seams glint between tiles)
+const plate = BABYLON.MeshBuilder.CreateBox('plate', { width:8.15, depth:8.15, height:0.14 }, scene);
+plate.position.y = -0.075; plate.material = goldMat; plate.parent = boardRoot; plate.isPickable = false;
+plate.receiveShadows = true;
+
+const tileProtoI = BABYLON.MeshBuilder.CreateBox('tileI', { width:0.965, depth:0.965, height:0.09 }, scene);
+tileProtoI.material = ivoryMat;
+const tileProtoR = BABYLON.MeshBuilder.CreateBox('tileR', { width:0.965, depth:0.965, height:0.09 }, scene);
+tileProtoR.material = roseMat;
+tileProtoI.receiveShadows = true; tileProtoR.receiveShadows = true;   // instances inherit this
+tileProtoI.setEnabled(false); tileProtoR.setEnabled(false);
+for(let f=0; f<8; f++) for(let r=0; r<8; r++){
+  const light = (f + r) % 2 === 1;
+  const t = (light ? tileProtoI : tileProtoR).createInstance('t_' + FILES[f] + (r+1));
+  t.position.set(f - 3.5, -0.005, r - 3.5);
+  t.parent = boardRoot;
+  t.metadata = { square: FILES[f] + (r + 1) };
+  t.receiveShadows = true;
+}
+
+// beveled gold frame
+function frameSide(name, w, d, x, z, rotY){
+  const m = BABYLON.MeshBuilder.CreateBox(name, { width:w, depth:d, height:0.24 }, scene);
+  m.position.set(x, -0.045, z);
+  m.rotation.y = rotY;
+  m.scaling.y = 1;
+  m.material = goldMat; m.parent = boardRoot; m.isPickable = false;
+  m.receiveShadows = true;
+  return m;
+}
+const FR_W = 0.82, FR_C = 4.075 + 0.02 + FR_W/2, FR_OUT = FR_C + FR_W/2;
+frameSide('frN', 2*FR_OUT, FR_W, 0,  FR_C, 0);
+frameSide('frS', 2*FR_OUT, FR_W, 0, -FR_C, 0);
+frameSide('frE', FR_W, 2*FR_OUT, FR_C, 0, 0);
+frameSide('frW', FR_W, 2*FR_OUT, -FR_C, 0, 0);
+// bevel lip (thin inner ring, slightly raised)
+const lip = BABYLON.MeshBuilder.CreateBox('lip', { width:8.19, depth:8.19, height:0.05 }, scene);
+lip.position.y = 0.045;
+const lipInner = BABYLON.MeshBuilder.CreateBox('lipCut', { width:8.02, depth:8.02, height:0.2 }, scene);
+lipInner.position.y = 0.045;
+const lipCSG = BABYLON.CSG.FromMesh(lip).subtract(BABYLON.CSG.FromMesh(lipInner));
+lip.dispose(); lipInner.dispose();
+const lipMesh = lipCSG.toMesh('lipMesh', goldMat, scene);
+lipMesh.parent = boardRoot; lipMesh.isPickable = false;
+
+// coordinate labels engraved into the frame
+function coordLabel(text, x, z, rot){
+  const dt = new BABYLON.DynamicTexture('c_' + text + x + z, 128, scene, true);
+  dt.hasAlpha = true;
+  const ctx = dt.getContext();
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.font = '600 74px Georgia, serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(72,50,16,0.92)';
+  ctx.fillText(text, 64, 68);
+  dt.update();
+  const mat = new BABYLON.StandardMaterial('cm_' + text + x + z, scene);
+  mat.diffuseTexture = dt; mat.opacityTexture = dt;
+  mat.emissiveColor = new BABYLON.Color3(0.32, 0.22, 0.07);
+  mat.disableLighting = true;
+  const p = BABYLON.MeshBuilder.CreatePlane('cp_' + text + x + z, { size:0.52 }, scene);
+  p.rotation.x = Math.PI/2; p.rotation.y = rot;
+  p.position.set(x, 0.077, z);
+  p.material = mat; p.parent = boardRoot; p.isPickable = false;
+}
+for(let f=0; f<8; f++){
+  coordLabel(FILES[f], f - 3.5, -FR_C, 0);          // near edge (player side)
+  coordLabel(FILES[f], f - 3.5,  FR_C, Math.PI);    // far edge (readable for black side)
+}
+for(let r=0; r<8; r++){
+  coordLabel(String(r + 1), -FR_C, r - 3.5, 0);
+  coordLabel(String(r + 1),  FR_C, r - 3.5, Math.PI);
+}
+
+/* ---------- piece sculpting ---------- */
+const V3 = (x, y, z) => new BABYLON.Vector3(x, y, z);
+function neckTube(name, pts, r0, r1){
+  const curve = BABYLON.Curve3.CreateCatmullRomSpline(pts, 14, false);
+  const path = curve.getPoints();
+  const n = path.length - 1;
+  return BABYLON.MeshBuilder.CreateTube(name, {
+    path, tessellation:14, cap:BABYLON.Mesh.CAP_ALL,
+    radiusFunction: i => r0 + (r1 - r0) * (i / n)
+  }, scene);
+}
+function pedestal(r = 0.32){
+  const prof = [ V3(0.0, 0, 0), V3(r + 0.05, 0, 0), V3(r + 0.06, 0.045, 0), V3(r - 0.02, 0.085, 0),
+                 V3(r - 0.1, 0.11, 0), V3(r - 0.13, 0.15, 0), V3(0.0, 0.15, 0) ];
+  return BABYLON.MeshBuilder.CreateLathe('ped', { shape:prof, tessellation:28, cap:BABYLON.Mesh.CAP_ALL }, scene);
+}
+function ellipsoid(name, d, sx, sy, sz){
+  const m = BABYLON.MeshBuilder.CreateSphere(name, { diameter:d, segments:18 }, scene);
+  m.scaling.set(sx, sy, sz); return m;
+}
+function cone(name, dBottom, h){
+  return BABYLON.MeshBuilder.CreateCylinder(name, { diameterTop:0, diameterBottom:dBottom, height:h, tessellation:16 }, scene);
+}
+function leg(){
+  const l = BABYLON.MeshBuilder.CreateCylinder('leg', { diameter:0.055, height:0.42, tessellation:10 }, scene);
+  l.position.set(0.04, 0.34, 0.02);
+  const knee = BABYLON.MeshBuilder.CreateSphere('knee', { diameter:0.075, segments:8 }, scene);
+  knee.position.set(0.04, 0.33, 0.02);
+  return [l, knee];
+}
+/* Each builder returns { body:[meshes], accent:[meshes] } around origin, facing +z */
+const BUILDERS = {
+  p(){ // 폰 — 새끼새, head tucked
+    const ped = pedestal(0.26);
+    const body = ellipsoid('b', 0.5, 1, 0.88, 1.12); body.position.y = 0.42;
+    const head = BABYLON.MeshBuilder.CreateSphere('h', { diameter:0.3, segments:14 }, scene);
+    head.position.set(0, 0.6, 0.17);
+    const beak = cone('bk', 0.085, 0.17); beak.position.set(0, 0.53, 0.32); beak.rotation.x = 2.35;
+    const tail = cone('tl', 0.16, 0.28); tail.position.set(0, 0.5, -0.28); tail.rotation.x = -2.05;
+    return { body:[ped, body, head, tail], accent:[beak] };
+  },
+  r(){ // 룩 — 둥지 탑 위의 새
+    const ped = pedestal(0.33);
+    const towerProf = [ V3(0.26, 0.13, 0), V3(0.2, 0.3, 0), V3(0.17, 0.52, 0), V3(0.2, 0.66, 0), V3(0.29, 0.74, 0), V3(0.0, 0.74, 0) ];
+    const tower = BABYLON.MeshBuilder.CreateLathe('tw', { shape:towerProf, tessellation:24, cap:BABYLON.Mesh.CAP_ALL }, scene);
+    const nest = BABYLON.MeshBuilder.CreateTorus('ns', { diameter:0.42, thickness:0.12, tessellation:22 }, scene);
+    nest.position.y = 0.76;
+    const twig1 = BABYLON.MeshBuilder.CreateCylinder('tg1', { diameter:0.03, height:0.5 }, scene);
+    twig1.rotation.z = Math.PI/2; twig1.rotation.y = 0.5; twig1.position.y = 0.79;
+    const twig2 = twig1.clone('tg2'); twig2.rotation.y = -0.7;
+    const bird = ellipsoid('bd', 0.34, 1, 0.9, 1.1); bird.position.set(0, 0.92, -0.02);
+    const head = BABYLON.MeshBuilder.CreateSphere('h', { diameter:0.19, segments:12 }, scene);
+    head.position.set(0, 1.1, 0.11);
+    const beak = cone('bk', 0.06, 0.14); beak.position.set(0, 1.07, 0.22); beak.rotation.x = 2.1;
+    return { body:[ped, tower, bird, head], accent:[nest, twig1, twig2, beak] };
+  },
+  n(){ // 나이트 — S커브 목의 옆얼굴
+    const ped = pedestal(0.3);
+    const lg = leg();
+    const body = ellipsoid('b', 0.5, 0.92, 0.9, 1.22); body.position.set(0, 0.62, -0.04);
+    const neck = neckTube('nk', [ V3(0, 0.66, 0.14), V3(0, 0.94, 0.34), V3(0, 1.16, 0.28), V3(0, 1.28, 0.06) ], 0.085, 0.06);
+    const head = ellipsoid('h', 0.24, 0.85, 1, 1.25); head.position.set(0, 1.31, 0.1);
+    const beak = cone('bk', 0.07, 0.24); beak.position.set(0, 1.23, 0.28); beak.rotation.x = 2.45;
+    const crest = cone('cr', 0.06, 0.16); crest.position.set(0, 1.42, 0.0); crest.rotation.x = -0.5;
+    const tail = cone('tl', 0.16, 0.34); tail.position.set(0, 0.66, -0.38); tail.rotation.x = -1.9;
+    return { body:[ped, ...lg, body, neck, head, tail], accent:[beak, crest] };
+  },
+  b(){ // 비숍 — 곧게 세운 긴 목, 주교모자 부리
+    const ped = pedestal(0.29);
+    const lg = leg();
+    const body = ellipsoid('b', 0.46, 0.92, 0.88, 1.12); body.position.set(0, 0.6, -0.02);
+    const neck = neckTube('nk', [ V3(0, 0.64, 0.06), V3(0, 1.0, 0.1), V3(0, 1.34, 0.03) ], 0.075, 0.055);
+    const collar = BABYLON.MeshBuilder.CreateTorus('cl', { diameter:0.15, thickness:0.035, tessellation:16 }, scene);
+    collar.position.set(0, 1.28, 0.045);
+    const head = BABYLON.MeshBuilder.CreateSphere('h', { diameter:0.22, segments:14 }, scene);
+    head.position.set(0, 1.42, 0.04);
+    // forward/down beak so it reads as a bird profile (not a vertical needle)
+    const beak = cone('bk', 0.09, 0.22); beak.position.set(0, 1.38, 0.18); beak.rotation.x = 2.25;
+    // mitre: wider cone tilted ~35° forward + gold band at the crest → bishop's hat
+    const mitre = cone('mt', 0.17, 0.26); mitre.position.set(0, 1.56, 0.08); mitre.rotation.x = 0.62;
+    const band = BABYLON.MeshBuilder.CreateTorus('hb', { diameter:0.2, thickness:0.03, tessellation:16 }, scene);
+    band.position.set(0, 1.48, 0.04); band.rotation.x = 0.18;
+    const tail = cone('tl', 0.14, 0.3); tail.position.set(0, 0.62, -0.32); tail.rotation.x = -1.95;
+    return { body:[ped, ...lg, body, neck, head, tail], accent:[collar, beak, mitre, band] };
+  },
+  q(){ // 퀸 — 티아라 + 활짝 편 한쪽 날개
+    const ped = pedestal(0.32);
+    const lg = leg();
+    const body = ellipsoid('b', 0.52, 0.95, 0.92, 1.16); body.position.set(0, 0.64, -0.02);
+    const neck = neckTube('nk', [ V3(0, 0.7, 0.08), V3(0, 1.1, 0.16), V3(0, 1.45, 0.1), V3(0, 1.62, 0.0) ], 0.08, 0.055);
+    const head = BABYLON.MeshBuilder.CreateSphere('h', { diameter:0.23, segments:14 }, scene);
+    head.position.set(0, 1.67, 0.01);
+    const beak = cone('bk', 0.06, 0.2); beak.position.set(0, 1.61, 0.17); beak.rotation.x = 2.3;
+    const tiara = BABYLON.MeshBuilder.CreateTorus('tr', { diameter:0.17, thickness:0.028, tessellation:18 }, scene);
+    tiara.position.set(0, 1.79, 0.0);
+    const gems = [];
+    for(let i=0;i<3;i++){
+      const g = BABYLON.MeshBuilder.CreateSphere('gm'+i, { diameter:0.045, segments:8 }, scene);
+      g.position.set((i-1)*0.06, 1.83, 0.055); gems.push(g);
+    }
+    const wing = ellipsoid('wg', 0.66, 0.16, 0.95, 0.55);
+    wing.position.set(0.3, 0.86, -0.06); wing.rotation.z = -0.62; wing.rotation.y = 0.25;
+    const wing2 = ellipsoid('wg2', 0.5, 0.12, 0.7, 0.45);
+    wing2.position.set(0.38, 0.72, -0.1); wing2.rotation.z = -0.95; wing2.rotation.y = 0.3;
+    const tail = cone('tl', 0.17, 0.36); tail.position.set(0, 0.68, -0.36); tail.rotation.x = -1.85;
+    return { body:[ped, ...lg, body, neck, head, wing, wing2, tail], accent:[beak, tiara, ...gems] };
+  },
+  k(){ // 킹 — 왕관, 가장 큰 키
+    const ped = pedestal(0.34);
+    const lg = leg();
+    const body = ellipsoid('b', 0.56, 0.98, 0.95, 1.18); body.position.set(0, 0.68, -0.02);
+    const neck = neckTube('nk', [ V3(0, 0.75, 0.08), V3(0, 1.2, 0.17), V3(0, 1.6, 0.08), V3(0, 1.78, 0.0) ], 0.085, 0.06);
+    const head = BABYLON.MeshBuilder.CreateSphere('h', { diameter:0.25, segments:14 }, scene);
+    head.position.set(0, 1.84, 0.01);
+    const beak = cone('bk', 0.065, 0.22); beak.position.set(0, 1.77, 0.18); beak.rotation.x = 2.3;
+    const crownBase = BABYLON.MeshBuilder.CreateCylinder('cb', { diameter:0.2, height:0.09, tessellation:16 }, scene);
+    crownBase.position.set(0, 1.99, 0);
+    const spikes = [];
+    for(let i=0;i<4;i++){
+      const a = i * Math.PI/2 + Math.PI/4;
+      const s = cone('sp'+i, 0.05, 0.11);
+      s.position.set(Math.cos(a)*0.07, 2.08, Math.sin(a)*0.07); spikes.push(s);
+    }
+    const orb = BABYLON.MeshBuilder.CreateSphere('orb', { diameter:0.06, segments:8 }, scene);
+    orb.position.set(0, 2.12, 0);
+    const medal = BABYLON.MeshBuilder.CreateSphere('md', { diameter:0.07, segments:8 }, scene);
+    medal.position.set(0, 0.82, 0.28);
+    const tail = cone('tl', 0.18, 0.38); tail.position.set(0, 0.72, -0.38); tail.rotation.x = -1.85;
+    return { body:[ped, ...lg, body, neck, head, tail], accent:[beak, crownBase, ...spikes, orb, medal] };
+  }
+};
+
+const protos = { w:{}, b:{} };
+for(const color of ['w', 'b']){
+  const mat = color === 'w' ? pinkPBR : blackPBR;
+  for(const t of ['p','r','n','b','q','k']){
+    const parts = BUILDERS[t]();
+    for(const m of parts.body)   m.material = mat;
+    for(const m of parts.accent) m.material = goldMat;
+    const merged = BABYLON.Mesh.MergeMeshes([...parts.body, ...parts.accent], true, true, undefined, false, true);
+    merged.name = 'proto_' + color + t;
+    merged.setEnabled(false);
+    merged.isPickable = false;
+    protos[color][t] = merged;
+  }
+}
+
+/* ---------- piece instances ---------- */
+let pieceBySquare = {};      // square -> mesh
+function spawnPiece(color, type, square){
+  const m = protos[color][type].clone('pc_' + color + type + '_' + square);
+  m.setEnabled(true);
+  m.isPickable = true;
+  m.metadata = { piece:true, color, type, square };
+  const p = sqToPos(square);
+  m.position.set(p.x, 0, p.z);
+  m.rotation.y = color === 'b' ? Math.PI : 0;
+  shadowGen.addShadowCaster(m);
+  pieceBySquare[square] = m;
+  return m;
+}
+function clearPieces(){
+  // Sweep ALL piece meshes in the scene (not just tracked ones) so any
+  // stray/orphaned meshes are collected too.
+  for(const m of scene.meshes.slice()){
+    if(m.metadata && m.metadata.piece && !m.isDisposed()) m.dispose();
+  }
+  pieceBySquare = {};
+}
+function rebuildBoard(){
+  clearPieces();
+  const b = chess.board();
+  for(let r=0; r<8; r++) for(let f=0; f<8; f++){
+    const pc = b[r][f];
+    if(pc) spawnPiece(pc.color, pc.type, pc.square);
+  }
+  refreshIndicators();
+  refreshHudPanels();
+}
+
+/* ---------- highlight & glow ---------- */
+const glow = new BABYLON.GlowLayer('glow', scene, { blurKernelSize:48 });
+glow.intensity = 0.85;
+
+function ringMat(name, color){
+  const m = new BABYLON.StandardMaterial(name, scene);
+  m.emissiveColor = color;
+  m.diffuseColor = m.specularColor = BABYLON.Color3.Black();
+  m.alpha = 0.92;
+  m.disableLighting = true;
+  return m;
+}
+const selRingMat   = ringMat('selRing',   new BABYLON.Color3(1.0, 0.72, 0.35));
+const dotMatMove   = ringMat('dotMove',   new BABYLON.Color3(1.0, 0.55, 0.65));
+const dotMatCapt   = ringMat('dotCapt',   new BABYLON.Color3(1.0, 0.3, 0.35));
+const checkRingMat = ringMat('checkRing', new BABYLON.Color3(1.0, 0.18, 0.18));
+
+const selRing = BABYLON.MeshBuilder.CreateTorus('selT', { diameter:0.8, thickness:0.045, tessellation:36 }, scene);
+selRing.material = selRingMat; selRing.position.y = 0.06; selRing.setEnabled(false); selRing.isPickable = false;
+const checkRing = BABYLON.MeshBuilder.CreateTorus('chkT', { diameter:0.86, thickness:0.055, tessellation:36 }, scene);
+checkRing.material = checkRingMat; checkRing.position.y = 0.06; checkRing.setEnabled(false); checkRing.isPickable = false;
+
+const dotPool = [];
+function getDot(i){
+  if(!dotPool[i]){
+    const d = BABYLON.MeshBuilder.CreateTorus('dot' + i, { diameter:0.34, thickness:0.05, tessellation:26 }, scene);
+    d.position.y = 0.055;
+    d.isPickable = true;
+    d.metadata = { dot:true };
+    dotPool.push(d);
+  }
+  return dotPool[i];
+}
+let shownDots = 0;
+function showLegalDots(moves){
+  hideLegalDots();
+  moves.forEach((mv, i) => {
+    const d = getDot(i);
+    const p = sqToPos(mv.to);
+    d.position.x = p.x; d.position.z = p.z;
+    const capt = mv.captured || mv.flags.includes('e');
+    d.material = capt ? dotMatCapt : dotMatMove;
+    d.scaling.setAll(capt ? 2.2 : 1);
+    d.metadata.square = mv.to;
+    d.setEnabled(true);
+  });
+  shownDots = moves.length;
+}
+function hideLegalDots(){
+  for(let i=0;i<dotPool.length;i++) dotPool[i].setEnabled(false);
+  shownDots = 0;
+}
+function refreshIndicators(){
+  if(mode !== 'title' && inCheckNow()){
+    // find the checked king
+    const b = chess.board(); const turn = chess.turn();
+    outer: for(let r=0;r<8;r++) for(let f=0;f<8;f++){
+      const pc = b[r][f];
+      if(pc && pc.type === 'k' && pc.color === turn){
+        const p = sqToPos(pc.square);
+        checkRing.position.x = p.x; checkRing.position.z = p.z;
+        checkRing.setEnabled(true);
+        break outer;
+      }
+    }
+  }else checkRing.setEnabled(false);
+}
+
+/* ---------- feather capture particles ---------- */
+const featherTex = featherTexture();
+function featherBurst(pos, dark){
+  const ps = new BABYLON.ParticleSystem('feathers', 50, scene);
+  ps.particleTexture = featherTex;
+  ps.emitter = pos.clone(); ps.emitter.y = 0.55;
+  ps.minEmitBox = new BABYLON.Vector3(-0.15, 0, -0.15);
+  ps.maxEmitBox = new BABYLON.Vector3(0.15, 0.3, 0.15);
+  if(dark){
+    ps.color1 = new BABYLON.Color4(0.32, 0.28, 0.42, 0.95);
+    ps.color2 = new BABYLON.Color4(0.16, 0.13, 0.22, 0.9);
+    ps.colorDead = new BABYLON.Color4(0.1, 0.08, 0.14, 0);
+  }else{
+    ps.color1 = new BABYLON.Color4(1.0, 0.75, 0.8, 0.95);
+    ps.color2 = new BABYLON.Color4(1.0, 0.55, 0.65, 0.9);
+    ps.colorDead = new BABYLON.Color4(1.0, 0.85, 0.88, 0);
+  }
+  ps.minSize = 0.09; ps.maxSize = 0.22;
+  ps.minLifeTime = 0.7; ps.maxLifeTime = 1.5;
+  ps.emitRate = 0;
+  ps.manualEmitCount = 34;
+  ps.blendMode = BABYLON.ParticleSystem.BLENDMODE_STANDARD;
+  ps.gravity = new BABYLON.Vector3(0, -1.6, 0);
+  ps.direction1 = new BABYLON.Vector3(-1.2, 2.4, -1.2);
+  ps.direction2 = new BABYLON.Vector3(1.2, 3.4, 1.2);
+  ps.minEmitPower = 0.7; ps.maxEmitPower = 1.7;
+  ps.minAngularSpeed = -3; ps.maxAngularSpeed = 3;
+  ps.updateSpeed = 0.012;
+  ps.disposeOnStop = true;
+  ps.start();
+  setTimeout(()=>ps.stop(), 130);
+}
+
+/* ---------- post-processing pipeline ---------- */
+try{
+  const pipe = new BABYLON.DefaultRenderingPipeline('drp', true, scene, [camera]);
+  pipe.fxaaEnabled = true;
+  pipe.bloomEnabled = true;
+  pipe.bloomThreshold = 0.75; pipe.bloomWeight = 0.28; pipe.bloomKernel = 48; pipe.bloomScale = 0.5;
+  pipe.imageProcessingEnabled = true;
+  pipe.imageProcessing.toneMappingEnabled = true;
+  pipe.imageProcessing.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+  pipe.imageProcessing.exposure = 1.18;
+  pipe.imageProcessing.contrast = 1.12;
+  pipe.imageProcessing.vignetteEnabled = true;
+  pipe.imageProcessing.vignetteWeight = 1.6;
+  pipe.imageProcessing.vignetteColor = new BABYLON.Color4(0.06, 0.02, 0.08, 0);
+  pipe.imageProcessing.vignetteCameraFov = 0.9;
+}catch(e){ /* keep base rendering if pipeline unsupported */ }
+try{
+  const ssao = new BABYLON.SSAO2RenderingPipeline('ssao', scene, 0.75, [camera]);
+  ssao.radius = 1.6; ssao.totalStrength = 0.9; ssao.samples = 12;
+  ssao.expensiveBlur = false;
+}catch(e){ /* SSAO2 optional */ }
+
+/* ---------- gentle idle: board breathes light ---------- */
+let tAcc = 0;
+scene.onBeforeRenderObservable.add(() => {
+  tAcc += engine.getDeltaTime() / 1000;
+  glow.intensity = 0.75 + Math.sin(tAcc * 2.1) * 0.14;
+  if(selRing.isEnabled()) selRing.rotation.y = tAcc * 0.9;
+  if(checkRing.isEnabled()){ checkRing.scaling.setAll(1 + Math.sin(tAcc * 5) * 0.045); }
+});
+
+/* ================= move animation ================= */
+const FPS = 60;
+let animBusy = false;
+function easeInOut(){ const e = new BABYLON.CubicEase(); e.setEasingMode(BABYLON.EasingFunction.EASINGMODE_EASEINOUT); return e; }
+function animateArc(mesh, toPos, dur, lift, done){
+  const frames = Math.max(6, Math.round(dur * FPS));
+  const from = mesh.position.clone();
+  const ax = new BABYLON.Animation('ax', 'position.x', FPS, BABYLON.Animation.ANIMATIONTYPE_FLOAT);
+  ax.setKeys([{frame:0, value:from.x}, {frame:frames, value:toPos.x}]); ax.setEasingFunction(easeInOut());
+  const az = new BABYLON.Animation('az', 'position.z', FPS, BABYLON.Animation.ANIMATIONTYPE_FLOAT);
+  az.setKeys([{frame:0, value:from.z}, {frame:frames, value:toPos.z}]); az.setEasingFunction(easeInOut());
+  const ay = new BABYLON.Animation('ay', 'position.y', FPS, BABYLON.Animation.ANIMATIONTYPE_FLOAT);
+  ay.setKeys([
+    {frame:0, value:from.y},
+    {frame:Math.round(frames*0.45), value:lift},
+    {frame:frames, value:0}
+  ]);
+  ay.setEasingFunction(easeInOut());
+  scene.beginDirectAnimation(mesh, [ax, ay, az], 0, frames, false, 1, done);
+}
+function animateVanish(mesh, done){
+  const frames = 16;
+  const s = new BABYLON.Animation('vs', 'scaling', FPS, BABYLON.Animation.ANIMATIONTYPE_VECTOR3);
+  s.setKeys([{frame:0, value:mesh.scaling.clone()}, {frame:frames, value:new BABYLON.Vector3(0.01, 0.01, 0.01)}]);
+  s.setEasingFunction(easeInOut());
+  scene.beginDirectAnimation(mesh, [s], 0, frames, false, 1, () => { mesh.dispose(); done && done(); });
+}
+
+/* Apply a chess.js verbose move result to the 3D board */
+function applyMoveVisual(mv, instant, onDone){
+  const fromMesh = pieceBySquare[mv.from];
+  const toPos = sqToPos(mv.to);
+  // captured square (en passant differs)
+  let capturedSq = null;
+  if(mv.flags.includes('e')) capturedSq = mv.to[0] + mv.from[1];
+  else if(mv.captured) capturedSq = mv.to;
+
+  const finish = () => {
+    if(mv.promotion && fromMesh){
+      const color = mv.color;
+      fromMesh.dispose();
+      delete pieceBySquare[mv.to];
+      spawnPiece(color, mv.promotion, mv.to);
+      if(!instant) SFX.promote();
+    }
+    // castling rook
+    if(mv.flags.includes('k') || mv.flags.includes('q')){
+      const rank = mv.color === 'w' ? '1' : '8';
+      const rookFrom = (mv.flags.includes('k') ? 'h' : 'a') + rank;
+      const rookTo   = (mv.flags.includes('k') ? 'f' : 'd') + rank;
+      const rk = pieceBySquare[rookFrom];
+      if(rk){
+        delete pieceBySquare[rookFrom];
+        pieceBySquare[rookTo] = rk;
+        rk.metadata.square = rookTo;
+        const rp = sqToPos(rookTo);
+        if(instant) rk.position.set(rp.x, 0, rp.z);
+        else animateArc(rk, rp, 0.4, 0.5, null);
+      }
+    }
+    onDone && onDone();
+  };
+
+  // Resolve the victim mesh BEFORE any map mutation — for normal captures
+  // capturedSq === mv.to, so looking it up later would find the MOVER instead.
+  let victimMesh = capturedSq ? pieceBySquare[capturedSq] : null;
+  if(victimMesh === fromMesh) victimMesh = null;
+
+  const doCapture = () => {
+    if(!victimMesh) return;
+    const victim = victimMesh; victimMesh = null;
+    if(instant){ victim.dispose(); }
+    else{
+      featherBurst(sqToPos(capturedSq), victim.metadata.color === 'b');
+      animateVanish(victim);
+    }
+  };
+
+  if(!fromMesh){ // safety — desync, rebuild
+    rebuildBoard(); onDone && onDone(); return;
+  }
+  if(victimMesh && pieceBySquare[capturedSq] === victimMesh) delete pieceBySquare[capturedSq];
+  delete pieceBySquare[mv.from];
+  pieceBySquare[mv.to] = fromMesh;
+  fromMesh.metadata.square = mv.to;
+
+  if(instant){
+    doCapture();
+    fromMesh.position.set(toPos.x, 0, toPos.z);
+    finish();
+  }else{
+    animBusy = true;
+    const dist = BABYLON.Vector3.Distance(fromMesh.position, new BABYLON.Vector3(toPos.x, 0, toPos.z));
+    const dur = Math.min(0.62, 0.3 + dist * 0.055);
+    setTimeout(doCapture, dur * 500);
+    animateArc(fromMesh, toPos, dur, 0.55 + dist * 0.04, () => {
+      animBusy = false;
+      if(mv.captured || mv.flags.includes('e')) SFX.capture(); else SFX.move();
+      finish();
+    });
+  }
+}
+
+/* ================= game flow ================= */
+const $ = id => document.getElementById(id);
+const hud = $('hud'), titleScreen = $('titleScreen');
+const statusPill = $('statusPill');
+const GLYPH = { p:'♟', r:'♜', n:'♞', b:'♝', q:'♛', k:'♚' };
+
+function setStatus(txt, cls){
+  statusPill.textContent = '';
+  statusPill.className = cls || '';
+  if(cls === 'think'){
+    statusPill.innerHTML = '흑조가 생각 중<span class="dots"></span>';
+  }else{
+    statusPill.textContent = txt;
+  }
+}
+function refreshStatus(){
+  if(mode !== 'playing'){ return; }
+  if(thinking){ setStatus('', 'think'); return; }
+  if(inCheckNow() && chess.turn() === playerColor){ setStatus('체크! 당신의 차례', 'check'); return; }
+  setStatus(chess.turn() === playerColor ? '당신의 차례' : '흑조의 차례', '');
+}
+
+/* captured trays — from actual capture history (promotions must NOT count as
+   captures); board-diff heuristic only as fallback for custom-FEN games */
+const FULLSET = { p:8, n:2, b:2, r:2, q:1, k:1 };
+function refreshHudPanels(){
+  // trays
+  let takenFromW, takenFromB; // glyph strings of pieces LOST by each side
+  const verbose = (() => { try{ return chess.history({ verbose:true }); }catch(e){ return []; } })();
+  if(startedFromCustomFen){
+    // board diff (can't know pre-game captures from a mid-game FEN)
+    const count = { w:{p:0,n:0,b:0,r:0,q:0,k:0}, b:{p:0,n:0,b:0,r:0,q:0,k:0} };
+    const bd = chess.board();
+    for(let r=0;r<8;r++) for(let f=0;f<8;f++){
+      const pc = bd[r][f]; if(pc) count[pc.color][pc.type]++;
+    }
+    const missing = c => {
+      let out = '';
+      for(const t of ['q','r','b','n','p']){
+        const n = Math.max(0, FULLSET[t] - count[c][t]);
+        out += GLYPH[t].repeat(n);
+      }
+      return out;
+    };
+    takenFromW = missing('w'); takenFromB = missing('b');
+  }else{
+    const cap = { w:{q:0,r:0,b:0,n:0,p:0}, b:{q:0,r:0,b:0,n:0,p:0} }; // pieces lost by color
+    for(const m of verbose){
+      if(m.captured) cap[m.color === 'w' ? 'b' : 'w'][m.captured]++;
+    }
+    const glyphs = c => ['q','r','b','n','p'].map(t => GLYPH[t].repeat(cap[c][t])).join('');
+    takenFromW = glyphs('w'); takenFromB = glyphs('b');
+  }
+  $('trayByPlayer').textContent = takenFromB; // black pieces the player captured
+  $('trayByAI').textContent = takenFromW;
+  // move list
+  const hist = chess.history();
+  let html = '<table>';
+  for(let i=0;i<hist.length;i+=2){
+    const last = i + 2 >= hist.length;
+    html += '<tr' + (last ? ' class="last"' : '') + '><td class="num">' + (i/2 + 1) + '.</td>'
+      + '<td class="w' + (last && hist.length % 2 === 1 ? ' hl' : '') + '">' + hist[i] + '</td>'
+      + '<td class="b' + (last && hist.length % 2 === 0 ? ' hl' : '') + '">' + (hist[i+1] || '') + '</td></tr>';
+  }
+  html += '</table>';
+  $('moveList').innerHTML = hist.length ? html : '';
+  const ml = $('moveList'); ml.scrollTop = ml.scrollHeight;
+  $('btnUndo').disabled = chess.history().length === 0 || mode !== 'playing';
+}
+
+function gameResultInfo(){
+  if(chess.isCheckmate()){
+    const winner = chess.turn() === 'w' ? 'b' : 'w';
+    return { over:true, winner, reason:'체크메이트' };
+  }
+  if(chess.isStalemate()) return { over:true, winner:null, reason:'스테일메이트' };
+  if(chess.isThreefoldRepetition()) return { over:true, winner:null, reason:'3회 동형반복' };
+  if(chess.isInsufficientMaterial()) return { over:true, winner:null, reason:'기물 부족' };
+  if(chess.isDraw()) return { over:true, winner:null, reason:'50수 규칙' };
+  return { over:false };
+}
+let overTimer = null;
+function checkGameOver(){
+  const res = gameResultInfo();
+  if(!res.over) return false;
+  mode = 'over';
+  thinking = false;
+  document.body.classList.remove('locked');
+  hideLegalDots(); selRing.setEnabled(false);
+  refreshIndicators();
+  let title, emblem, cls = '';
+  if(res.winner === playerColor){ title = '승리'; emblem = '🦩'; stats.w++; SFX.win(); }
+  else if(res.winner){ title = '패배'; emblem = '🦢'; cls = 'lose'; stats.l++; SFX.lose(); }
+  else{ title = '무승부'; emblem = '🪶'; cls = 'lose'; stats.d++; SFX.draw(); }
+  store.set('fc_stats', stats);
+  $('overResult').textContent = title;
+  $('overEmblem').textContent = emblem;
+  $('overReason').textContent = res.reason;
+  $('overStats').textContent = '전적 ' + stats.w + '승 ' + stats.l + '패 ' + stats.d + '무';
+  $('overBox').className = 'over-box ' + cls;
+  clearTimeout(overTimer);
+  overTimer = setTimeout(() => { if(mode === 'over') $('overModal').classList.remove('hidden'); }, res.winner ? 850 : 500);
+  setStatus(res.winner === playerColor ? '체크메이트 — 승리!' : res.winner ? '체크메이트 — 패배' : '무승부', res.winner ? 'check' : '');
+  return true;
+}
+
+function afterAnyMove(instant){
+  refreshIndicators();
+  refreshHudPanels();
+  if(checkGameOver()) return;
+  if(!instant && inCheckNow()) SFX.check();
+  refreshStatus();
+}
+
+/* commit a legal move for whoever's turn it is */
+function commitMove(moveArg, { instant = false, fromAI = false } = {}){
+  let mv;
+  try{ mv = chess.move(moveArg); }
+  catch(e){ return null; }
+  hideLegalDots(); selRing.setEnabled(false); selected = null;
+  applyMoveVisual(mv, instant, () => {
+    afterAnyMove(instant);
+    if(!fromAI && mode === 'playing' && chess.turn() === aiColor && !P_NOAI && !instant) scheduleAI();
+  });
+  if(instant){ /* afterAnyMove already ran synchronously via applyMoveVisual */ }
+  return mv;
+}
+
+function scheduleAI(){
+  if(mode !== 'playing' || chess.turn() !== aiColor) return;
+  thinking = true;
+  document.body.classList.add('locked');
+  refreshStatus();
+  setTimeout(() => { if(thinking && mode === 'playing') requestAI(); }, 380);
+}
+function onAIResult(mv){
+  if(mode !== 'playing' || !thinking) return;
+  thinking = false;
+  document.body.classList.remove('locked');
+  if(!mv){ afterAnyMove(false); return; }
+  commitMove({ from:mv.from, to:mv.to, promotion:mv.promotion }, { fromAI:true });
+  refreshStatus();
+}
+
+/* ================= input: click-select + drag-and-drop ================= */
+let selected = null;        // mesh
+let drag = null;            // { mesh, from, sx, sy, moved }
+const DRAG_Y = 0.75;
+
+function legalMovesFrom(sq){
+  try{ return chess.moves({ square:sq, verbose:true }); }catch(e){ return []; }
+}
+function pointerToBoard(){
+  const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, BABYLON.Matrix.Identity(), camera);
+  if(Math.abs(ray.direction.y) < 1e-5) return null;
+  const t = (DRAG_Y * 0.2 - ray.origin.y) / ray.direction.y;
+  if(t < 0) return null;
+  return ray.origin.add(ray.direction.scale(t));
+}
+function selectPiece(mesh){
+  selected = mesh;
+  const p = sqToPos(mesh.metadata.square);
+  selRing.position.x = p.x; selRing.position.z = p.z;
+  selRing.setEnabled(true);
+  showLegalDots(legalMovesFrom(mesh.metadata.square));
+  SFX.select();
+}
+function deselect(){
+  selected = null;
+  selRing.setEnabled(false);
+  hideLegalDots();
+}
+function playerCanAct(){
+  return mode === 'playing' && !thinking && !animBusy && chess.turn() === playerColor && $('promoModal').classList.contains('hidden');
+}
+function tryPlayerMove(from, to){
+  const legal = legalMovesFrom(from).filter(m => m.to === to);
+  if(!legal.length) return false;
+  if(legal.some(m => m.promotion)){
+    openPromoPicker(from, to);
+    return 'promo';
+  }
+  commitMove({ from, to });
+  return true;
+}
+
+scene.onPointerObservable.add(pi => {
+  const ev = pi.event;
+  if(pi.type === BABYLON.PointerEventTypes.POINTERDOWN){
+    if(ev.button !== 0 && ev.pointerType === 'mouse') return;
+    if(drag) return;               // a drag is in progress — ignore any second pointer
+    if(!playerCanAct()) return;
+    const pick = scene.pick(scene.pointerX, scene.pointerY,
+      m => m.isEnabled() && (m.metadata && (m.metadata.piece || m.metadata.dot || m.metadata.square !== undefined)));
+    if(!pick.hit){ deselect(); return; }
+    const md = pick.pickedMesh.metadata || {};
+    if(md.piece && md.color === playerColor){
+      drag = { mesh:pick.pickedMesh, from:md.square, sx:scene.pointerX, sy:scene.pointerY, moved:false, pointerId:ev.pointerId };
+      selectPiece(pick.pickedMesh);
+    }else if(selected && (md.dot || md.square)){
+      const target = md.dot ? md.square : md.square;
+      const from = selected.metadata.square;
+      if(!tryPlayerMove(from, target)) deselect();
+    }else{
+      deselect();
+    }
+  }
+  else if(pi.type === BABYLON.PointerEventTypes.POINTERMOVE){
+    if(!drag || ev.pointerId !== drag.pointerId) return;   // only the owning pointer moves the piece
+    const dx = scene.pointerX - drag.sx, dy = scene.pointerY - drag.sy;
+    if(dx*dx + dy*dy > 36) drag.moved = true;
+    if(drag.moved){
+      const pt = pointerToBoard();
+      if(pt){
+        drag.mesh.position.x = Math.max(-4.4, Math.min(4.4, pt.x));
+        drag.mesh.position.z = Math.max(-4.4, Math.min(4.4, pt.z));
+        drag.mesh.position.y = DRAG_Y;
+      }
+    }
+  }
+  else if(pi.type === BABYLON.PointerEventTypes.POINTERUP){
+    if(!drag || ev.pointerId !== drag.pointerId) return;   // ignore other fingers lifting
+    const d = drag; drag = null;
+    if(!d.moved){
+      // simple click on own piece: selection stays (or toggles off if clicked again)
+      return;
+    }
+    const sq = posToSq(d.mesh.position.x, d.mesh.position.z);
+    const home = sqToPos(d.from);
+    const settle = () => { d.mesh.position.set(home.x, 0, home.z); };
+    if(sq && sq !== d.from){
+      const r = tryPlayerMove(d.from, sq);
+      if(r === true){
+        // commitMove reassigned mesh; snap drop
+        const tp = sqToPos(sq);
+        d.mesh.position.set(tp.x, 0, tp.z);
+        return;
+      }
+      if(r === 'promo'){ settle(); return; }
+    }
+    // illegal → glide back
+    animateArc(d.mesh, home, 0.28, 0.3, null);
+    if(sq !== d.from) deselect();
+  }
+});
+
+/* ================= promotion picker ================= */
+let promoPending = null;
+function openPromoPicker(from, to){
+  promoPending = { from, to };
+  $('promoModal').classList.remove('hidden');
+}
+document.querySelectorAll('.promo-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    if(!promoPending) return;
+    const { from, to } = promoPending;
+    promoPending = null;
+    $('promoModal').classList.add('hidden');
+    SFX.ui();
+    commitMove({ from, to, promotion:b.dataset.p });
+  });
+});
+$('promoModal').addEventListener('click', e => {
+  if(e.target === $('promoModal')){ promoPending = null; $('promoModal').classList.add('hidden'); deselect(); }
+});
+
+/* ================= UI wiring ================= */
+/* Muted state = same '♪' glyph dimmed + CSS slash (U+1D13D rest renders as tofu on most devices) */
+function refreshMuteBtn(){ $('btnMute').textContent = '♪'; $('btnMute').classList.toggle('is-muted', !!muted); }
+$('btnMute').onclick = () => { muted = !muted; store.set('fc_mute', muted); refreshMuteBtn(); if(!muted) SFX.ui(); };
+$('btnView').onclick = () => { resetView(); SFX.ui(); };
+document.querySelectorAll('#camDock .cbtn').forEach(b => {
+  const k = b.dataset.cam;
+  const down = e => { e.preventDefault(); camPress(k); SFX.ui(); if(e.pointerId != null && b.setPointerCapture) { try { b.setPointerCapture(e.pointerId); } catch(_){} } };
+  const up = () => camRelease();
+  b.addEventListener('pointerdown', down);
+  b.addEventListener('pointerup', up);
+  b.addEventListener('pointerleave', up);
+  b.addEventListener('pointercancel', up);
+});
+// mobile bottom-sheet toggle for the move list (no-op on desktop layout)
+$('moveCard').querySelector('h3').addEventListener('click', () => $('moveCard').classList.toggle('open'));
+$('btnUndo').onclick = () => {
+  if(mode !== 'playing' || animBusy) return;
+  if(thinking){ aiToken++; thinking = false; document.body.classList.remove('locked'); }
+  // undo AI+player pair (or single if odd)
+  if(chess.history().length === 0) return;
+  chess.undo();
+  if(chess.history().length > 0 && chess.turn() !== playerColor) chess.undo();
+  deselect();
+  rebuildBoard();
+  refreshStatus();
+  // If the undo left the AI on move (e.g. black-to-move FEN game undone to the
+  // start), reschedule it — otherwise the game soft-locks.
+  if(mode === 'playing' && chess.turn() === aiColor && !P_NOAI) scheduleAI();
+  SFX.ui();
+};
+$('btnNew').onclick = () => { goTitle(); SFX.ui(); };
+$('btnAgain').onclick = () => { $('overModal').classList.add('hidden'); startGame(START_FEN); SFX.ui(); };
+$('btnHome').onclick = () => { $('overModal').classList.add('hidden'); goTitle(); SFX.ui(); };
+
+document.querySelectorAll('.diff-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.diff-btn').forEach(x => x.classList.remove('sel'));
+    b.classList.add('sel');
+    difficulty = +b.dataset.d;
+    store.set('fc_diff', difficulty);
+    SFX.ui();
+  });
+  if(+b.dataset.d === difficulty){ document.querySelectorAll('.diff-btn').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); }
+});
+$('btnStart').onclick = () => { SFX.ui(); startGame(baseFen); };
+
+function refreshTitleStats(){
+  $('statLine').innerHTML = (stats.w + stats.l + stats.d) === 0
+    ? '첫 대국을 시작해 보세요'
+    : '전적&nbsp; <b>' + stats.w + '승</b> · ' + stats.l + '패 · ' + stats.d + '무';
+}
+function goTitle(){
+  mode = 'title';
+  clearTimeout(overTimer);
+  thinking = false; aiToken++;
+  document.body.classList.remove('locked');
+  deselect();
+  $('overModal').classList.add('hidden');
+  $('promoModal').classList.add('hidden');
+  hud.classList.add('hidden');
+  titleScreen.classList.remove('hidden');
+  refreshTitleStats();
+}
+function startGame(fen){
+  try{ chess = new Chess(fen || START_FEN); }
+  catch(e){ chess = new Chess(); }
+  startedFromCustomFen = chess.fen() !== START_FEN;
+  mode = 'playing';
+  clearTimeout(overTimer);
+  thinking = false; aiToken++;
+  document.body.classList.remove('locked');
+  titleScreen.classList.add('hidden');
+  hud.classList.remove('hidden');
+  $('overModal').classList.add('hidden');
+  deselect();
+  rebuildBoard();
+  refreshStatus();
+  if(!checkGameOver() && chess.turn() === aiColor && !P_NOAI) scheduleAI();
+}
+
+refreshMuteBtn();
+refreshTitleStats();
+
+/* ================= debug hooks ================= */
+window.__game = {
+  move(str){
+    // accepts SAN ('Nf3', 'exd5', 'a8=Q') or UCI ('e2e4', 'a7a8q')
+    let mv = commitMove(str, { instant:true });
+    if(!mv && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(str)){
+      mv = commitMove({ from:str.slice(0,2), to:str.slice(2,4), promotion:str[4] || undefined }, { instant:true });
+    }
+    return mv ? mv.san : null;
+  },
+  state(){
+    const res = gameResultInfo();
+    return {
+      mode, fen:chess.fen(), turn:chess.turn(),
+      inCheck:inCheckNow(), over:res.over, winner:res.winner || null, reason:res.reason || null,
+      history:chess.history(), difficulty, thinking, workerOK
+    };
+  },
+  fen(){ return chess.fen(); },
+  aiMoveNow(){
+    if(mode !== 'playing' || gameResultInfo().over) return false;
+    thinking = true; document.body.classList.add('locked'); refreshStatus();
+    requestAI();
+    return true;
+  },
+  aiMoveSync(){ // deterministic synchronous AI (used by self-test)
+    const d = DIFF[difficulty];
+    const mv = bestMoveSync(Chess, chess.fen(), d.depth, d.noise);
+    if(mv) commitMove({ from:mv.from, to:mv.to, promotion:mv.promotion }, { instant:true, fromAI:true });
+    return mv;
+  },
+  setDifficulty(n){ difficulty = Math.min(2, Math.max(0, n|0)); store.set('fc_diff', difficulty); return DIFF[difficulty].name; },
+  undo(){ $('btnUndo').onclick(); return chess.fen(); },
+  newGame(fen){ startGame(fen || START_FEN); return chess.fen(); },
+  resetView
+};
+
+/* ================= boot / URL params ================= */
+if(P_FEN){
+  try{ new Chess(P_FEN); baseFen = P_FEN; }catch(e){ baseFen = START_FEN; }
+}
+if(P_AUTO){
+  startGame(baseFen);
+  if(P_MOVES){
+    for(const m of P_MOVES.split(',').map(s => s.trim()).filter(Boolean)) window.__game.move(m);
+  }
+  if(params.has('showpromo')){
+    const sp = params.get('showpromo');
+    if(/^[a-h][1-8][a-h][1-8]$/.test(sp)) openPromoPicker(sp.slice(0,2), sp.slice(2,4));
+  }
+}
+
+/* ================= self-test (?selftest=1) ================= */
+async function selfTest(){
+  const out = [];
+  const T = (name, ok, extra) => out.push({ name, ok:!!ok, extra: extra === undefined ? '' : String(extra) });
+  try{
+    // 1) scholar's mate → checkmate + winner detection
+    startGame(START_FEN);
+    ['e4','e5','Bc4','Nc6','Qh5','Nf6','Qxf7#'].forEach(m => window.__game.move(m));
+    let st = window.__game.state();
+    T('scholars_mate_checkmate', st.over && st.reason === '체크메이트' && st.winner === 'w', st.reason);
+
+    // 2) castling both sides
+    startGame('r3k2r/pppq1ppp/2npbn2/2b1p3/2B1P3/2NPBN2/PPPQ1PPP/R3K2R w KQkq - 0 1');
+    const cs1 = window.__game.move('O-O');
+    const cs2 = window.__game.move('O-O-O');
+    T('castle_kingside_white', cs1 === 'O-O', cs1);
+    T('castle_queenside_black', cs2 === 'O-O-O', cs2);
+    T('castle_board_sync', !!pieceBySquare['g1'] && !!pieceBySquare['f1'] && !!pieceBySquare['c8'] && !!pieceBySquare['d8']);
+
+    // 3) en passant
+    startGame('4k3/8/8/8/4p3/8/3P4/4K3 w - - 0 1');
+    window.__game.move('d4');
+    const ep = window.__game.move('exd3');
+    T('en_passant', ep === 'exd3' && !pieceBySquare['d4'] && !!pieceBySquare['d3'], ep);
+
+    // 3b) normal capture — mesh integrity (victim disposed, mover tracked, no ghost meshes)
+    startGame('k7/8/8/3p4/8/8/8/3QK3 w - - 0 1');
+    window.__game.move('d1d5');
+    const d5m = pieceBySquare['d5'];
+    const pieceMeshes = scene.meshes.filter(m => m.metadata && m.metadata.piece && !m.isDisposed());
+    const boardCount = chess.board().flat().filter(Boolean).length;
+    T('capture_mesh_sync',
+      d5m && d5m.metadata.type === 'q' && d5m.metadata.color === 'w'
+      && pieceMeshes.filter(m => m.metadata.square === 'd5').length === 1
+      && pieceMeshes.length === boardCount,
+      'meshes=' + pieceMeshes.length + ' board=' + boardCount);
+
+    // 4) promotion (Q + underpromotion N) via UCI too
+    startGame('4k3/P7/8/8/8/8/8/4K3 w - - 0 1');
+    const pr = window.__game.move('a8=Q');
+    T('promotion_queen', (pr === 'a8=Q' || pr === 'a8=Q+') && chess.get('a8') && chess.get('a8').type === 'q', pr);
+    T('promotion_mesh', pieceBySquare['a8'] && pieceBySquare['a8'].metadata.type === 'q');
+    // 5) undo restores fen
+    const fenBefore = '4k3/P7/8/8/8/8/8/4K3 w - - 0 1';
+    chess.undo(); rebuildBoard();
+    T('undo_restores_fen', chess.fen() === fenBefore, chess.fen());
+    const pr2 = window.__game.move('a7a8n');
+    T('underpromotion_uci_knight', pr2 === 'a8=N+' || pr2 === 'a8=N', pr2);
+
+    // 6) difficulty switch + AI computes a legal move (sync core, same code as worker)
+    startGame(START_FEN);
+    T('set_difficulty', window.__game.setDifficulty(2) === '어려움');
+    window.__game.setDifficulty(1);
+    window.__game.move('e4');
+    const aim = window.__game.aiMoveSync();
+    T('ai_replies_legal', !!aim && chess.history().length === 2, aim && aim.san);
+
+    // 7) draws — insufficient material
+    startGame('4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+    let st2 = window.__game.state();
+    T('draw_insufficient_material', st2.over && st2.reason === '기물 부족', st2.reason);
+    // threefold repetition
+    startGame(START_FEN);
+    ['Nf3','Nf6','Ng1','Ng8','Nf3','Nf6','Ng1','Ng8'].forEach(m => window.__game.move(m));
+    st2 = window.__game.state();
+    T('draw_threefold', st2.over && st2.reason === '3회 동형반복', st2.reason);
+    // stalemate
+    startGame('7k/5Q2/6K1/8/8/8/8/8 w - - 0 1');
+    window.__game.move('Qg7');
+    st2 = window.__game.state();
+    // Qg7 is actually mate; use a real stalemate: king h8, Q g6, K f7 → black to move = stalemate
+    startGame('7k/5K2/6Q1/8/8/8/8/8 b - - 0 1');
+    st2 = window.__game.state();
+    T('stalemate_detected', st2.over && st2.reason === '스테일메이트', st2.reason);
+
+    // 8) fifty-move counter honored from FEN
+    startGame('4k3/8/8/8/8/8/4R3/4K3 w - - 99 80');
+    window.__game.move('Re3');
+    st2 = window.__game.state();
+    T('fifty_move_rule', st2.over && (st2.reason === '50수 규칙' || st2.reason === '3회 동형반복'), st2.reason);
+
+    // 9) worker status (informational)
+    T('worker_spawned', aiWorker !== null, 'workerOK=' + workerOK);
+  }catch(e){
+    T('exception', false, e.message);
+  }
+  const pass = out.filter(o => o.ok).length;
+  const summary = { pass, total: out.length, results: out, errors: window.__errors };
+  document.body.dataset.selftest = JSON.stringify(summary);
+  console.log('SELFTEST', JSON.stringify(summary));
+  // leave a fresh game up
+  startGame(START_FEN);
+}
+if(params.has('selftest')) setTimeout(selfTest, 400);
+
+/* ?aitest=1 — exercises the real worker path end-to-end */
+if(params.has('aitest')){
+  // hold the window load event open so headless --timeout dumps AFTER the worker replies
+  const holdImg = new Image(); holdImg.src = 'http://10.255.255.1/hold.png';
+  window.__game.move('e4');
+  const t0 = performance.now();
+  window.__game.aiMoveNow();
+  const poll = setInterval(() => {
+    if(chess.history().length >= 2){
+      clearInterval(poll);
+      document.body.dataset.ai = JSON.stringify({
+        workerOK, reply:chess.history()[1], ms:Math.round(performance.now() - t0)
+      });
+    }
+  }, 100);
+}
+
+/* ================= render loop ================= */
+engine.runRenderLoop(() => scene.render());
+window.addEventListener('resize', () => { applyHiDPI(); engine.resize(); applyCameraFraming(); });
+document.body.dataset.ready = '1';
+</script>
+</body>
+</html>
