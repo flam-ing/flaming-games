@@ -94,9 +94,10 @@ const state = {
 // Canvas CSS integer scaling
 // ---------------------------------------------------------------------------
 function resizeCanvasDisplay() {
-  const scaleX = Math.floor(window.innerWidth / FB_W) || 1;
-  const scaleY = Math.floor(window.innerHeight / FB_H) || 1;
-  const scale = Math.max(1, Math.min(scaleX, scaleY));
+  const scaleX = window.innerWidth / FB_W;
+  const scaleY = window.innerHeight / FB_H;
+  let scale = Math.min(scaleX, scaleY);
+  if (scale >= 1) scale = Math.floor(scale);
   canvas.style.width = (FB_W * scale) + 'px';
   canvas.style.height = (FB_H * scale) + 'px';
 }

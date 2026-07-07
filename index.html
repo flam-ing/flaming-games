@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>🦩 Flaming Games Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Outfit:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0c0812;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary-pink: #e61862;
+            --primary-hover: #ff5e7e;
+            --text-main: #ffffff;
+            --text-secondary: #a0a0b0;
+            --font-display: 'Outfit', sans-serif;
+            --font-sans: 'Inter', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding-bottom: 60px;
+        }
+
+        /* Animated decorative background glows */
+        .glow-bg {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(230, 24, 98, 0.12) 0%, transparent 70%);
+            z-index: -1;
+            filter: blur(80px);
+            pointer-events: none;
+        }
+        .glow-1 { top: -200px; left: -200px; }
+        .glow-2 { bottom: -200px; right: -200px; }
+
+        header {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 60px 24px 30px;
+            text-align: center;
+        }
+
+        .logo-emoji {
+            font-size: 56px;
+            margin-bottom: 12px;
+            display: inline-block;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: clamp(32px, 5vw, 48px);
+            font-weight: 900;
+            letter-spacing: -0.03em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #fff 40%, var(--primary-hover));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            font-size: clamp(14px, 2vw, 17px);
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 20px;
+            line-height: 1.6;
+        }
+
+        .badge {
+            background: rgba(230, 24, 98, 0.15);
+            border: 1px solid rgba(230, 24, 98, 0.3);
+            color: var(--primary-hover);
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            display: inline-block;
+        }
+
+        main {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 24px;
+            flex-grow: 1;
+        }
+
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
+        }
+
+        .game-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), 
+                        border-color 0.3s ease, 
+                        box-shadow 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            position: relative;
+        }
+
+        .game-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 16px;
+            padding: 1px;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.1), transparent);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        .game-card:hover {
+            transform: translateY(-8px);
+            border-color: rgba(230, 24, 98, 0.4);
+            box-shadow: 0 12px 30px rgba(230, 24, 98, 0.15);
+        }
+
+        .game-header {
+            padding: 24px 24px 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .game-icon {
+            font-size: 36px;
+            width: 64px;
+            height: 64px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .game-title-group {
+            flex-grow: 1;
+        }
+
+        .game-title {
+            font-family: var(--font-display);
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .game-genre {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--primary-hover);
+            font-weight: 700;
+        }
+
+        .game-body {
+            padding: 0 24px 24px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+
+        .game-description {
+            font-size: 13.5px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 24px;
+            flex-grow: 1;
+        }
+
+        .play-btn {
+            background: var(--primary-pink);
+            color: #fff;
+            text-decoration: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 14px;
+            text-align: center;
+            transition: background 0.2s, box-shadow 0.2s;
+            display: block;
+        }
+
+        .play-btn:hover {
+            background: var(--primary-hover);
+            box-shadow: 0 0 14px rgba(230, 24, 98, 0.4);
+        }
+
+        footer {
+            max-width: 1200px;
+            width: 100%;
+            margin: 60px auto 0;
+            padding: 0 24px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.25);
+            font-size: 12px;
+        }
+
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        /* Mobile specific optimizations */
+        @media (max-width: 480px) {
+            header {
+                padding: 40px 16px 20px;
+            }
+            .games-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .game-card {
+                border-radius: 14px;
+            }
+            .play-btn {
+                padding: 14px 20px; /* Touch target enlargement */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="glow-bg glow-1"></div>
+    <div class="glow-bg glow-2"></div>
+
+    <header>
+        <div class="logo-emoji">🦩</div>
+        <h1>Flaming Games</h1>
+        <p class="subtitle">순수 웹 브라우저 엔진 기술로 설계된 복고풍 2D/3D 게임 컬렉션입니다. 별도의 설치 없이 모바일과 PC 기기에서 바로 터치 및 마우스로 즐길 수 있습니다.</p>
+        <span class="badge">🎮 Mobile Touch Friendly</span>
+    </header>
+
+    <main>
+        <div class="games-grid">
+            <!-- 1. Flamingo Chess -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">♟️</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">Flamingo Chess</h2>
+                        <span class="game-genre">3D Board Game</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">PBR 3D 체스 판에서 플라밍고 백색 진영을 지휘하여 인공지능 흑조 진영을 격파하세요. 드래그 앤 드롭 터치 컨트롤을 지원합니다.</p>
+                    <a href="./flamingo-chess/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+
+            <!-- 2. Flamingo Road -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">🚗</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">Flamingo Road</h2>
+                        <span class="game-genre">3D Runner</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">달리는 자동차와 장애물 강물을 피해 전진하는 3D 복셀 어드벤처 게임입니다. 화면 스와이프와 가벼운 터치로 플레이가 가능합니다.</p>
+                    <a href="./flamingo-road/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+
+            <!-- 3. SUPER MINGO -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">🍄</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">SUPER MINGO</h2>
+                        <span class="game-genre">2D Platformer</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">8비트 복고풍 도트 감성의 수평 스크롤링 모험 게임입니다. 모바일 기기로 접속 시 터치형 D-Pad 조이스틱 컨트롤러가 자동으로 활성화됩니다.</p>
+                    <a href="./super-mingo/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+
+            <!-- 4. DOOMINGO -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">🔫</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">DOOMINGO</h2>
+                        <span class="game-genre">2.5D FPS</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">레트로 클래식 둠(Doom) 스타일의 레이캐스팅 3D 슈터 게임입니다. 화면 좌측 가상 조이스틱과 우측 발사 버튼을 터치하여 사격할 수 있습니다.</p>
+                    <a href="./doomingo/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+
+            <!-- 5. Flamingo Jump -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">🦘</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">Flamingo Jump</h2>
+                        <span class="game-genre">2D Vertical Jump</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">발판을 밟고 하늘 높이 솟구치는 수직 상승 점프 액션 게임입니다. 화면의 왼쪽/오른쪽을 손가락으로 누르는 대로 직관적으로 방향이 전환됩니다.</p>
+                    <a href="./flamingo-jump/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+
+            <!-- 6. Flamingo Stairs -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">🪜</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">Flamingo Stairs</h2>
+                        <span class="game-genre">2D Quick Action</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">무한으로 늘어선 계단을 방향에 맞춰 민첩하게 오르는 순발력 스피드런 게임입니다. 모바일 터치 스크린에 최적화된 오르기/방향 버튼이 제공됩니다.</p>
+                    <a href="./flamingo-stairs/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+
+            <!-- 7. Flamingo Empress -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">👑</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">Flamingo Empress</h2>
+                        <span class="game-genre">Simulation</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">황실에서의 정치적 결단과 다양한 이벤트를 조율하는 턴제 역사 시뮬레이션 게임입니다. 텍스트 버튼 위주의 인터페이스로 터치 조작이 편리합니다.</p>
+                    <a href="./flamingo-empress/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+
+            <!-- 8. Flamingo Craft -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">⛏️</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">Flamingo Craft</h2>
+                        <span class="game-genre">3D Sandbox</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">3D 오픈월드 샌드박스에서 블록을 파괴하고 건설하세요. 모바일 화면에서 드래그 조작으로 시점을 회전하고, 전용 조이스틱과 점프 버튼을 지원합니다.</p>
+                    <a href="./flamingo-craft/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+
+            <!-- 9. Flamingo Gate Defense -->
+            <div class="game-card">
+                <div class="game-header">
+                    <div class="game-icon">🛡️</div>
+                    <div class="game-title-group">
+                        <h2 class="game-title">Flamingo Gate Defense</h2>
+                        <span class="game-genre">3D Runner Defense</span>
+                    </div>
+                </div>
+                <div class="game-body">
+                    <p class="game-description">수학 관문을 지나며 군대를 키워 성을 방어하는 박진감 넘치는 디펜스 게임입니다. 좌우 드래그 스와이프로 직관적인 군대 위치 컨트롤이 가능합니다.</p>
+                    <a href="./flamingo-gate-defense/" class="play-btn">게임 시작하기</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 FLAMING EDITORIAL. Open Source under MIT License.</p>
+    </footer>
+</body>
+</html>

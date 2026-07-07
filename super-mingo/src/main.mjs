@@ -44,7 +44,10 @@ screen = SCREEN.TITLE;
 // ---------------------------------------------------------------------------
 
 function resize() {
-  const scale = Math.max(1, Math.floor(Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H)));
+  const scaleX = window.innerWidth / VIEW_W;
+  const scaleY = window.innerHeight / VIEW_H;
+  let scale = Math.min(scaleX, scaleY);
+  if (scale >= 1) scale = Math.floor(scale);
   canvas.style.width = (VIEW_W * scale) + 'px';
   canvas.style.height = (VIEW_H * scale) + 'px';
 }
