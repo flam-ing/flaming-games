@@ -1,0 +1,1466 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>플라밍고 대군단 — Flamingo Gate Defense</title>
+<style>
+  :root{
+    --pink:#ff5c9e; --pink-deep:#e8437f; --cream:#fff6ea; --ink:#3a2b3f;
+    --blue:#3fa9ff; --red:#ff4d5e; --cyan:#39d6d0;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ width:100%; height:100%; overflow:hidden; background:#ffd9b3;
+    font-family:-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  #app{ position:fixed; inset:0; touch-action:none; }
+  canvas{ display:block; }
+
+  #ui{ position:fixed; inset:0; pointer-events:none; overflow:hidden; }
+
+  /* ---------- HUD ---------- */
+  #hud{ position:absolute; top:12px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:2px;
+    opacity:0; transition:opacity .3s; }
+  #hud.show{ opacity:1; }
+  #score{ font-size:min(9vw,44px); font-weight:900; color:#fff; letter-spacing:1px;
+    text-shadow:0 3px 0 rgba(210,80,130,.55), 0 6px 18px rgba(0,0,0,.25); font-variant-numeric:tabular-nums; }
+  #subScore{ font-size:min(3.6vw,15px); font-weight:700; color:#fff; opacity:.95;
+    text-shadow:0 2px 6px rgba(0,0,0,.3); }
+  #best{ font-size:min(3.4vw,14px); font-weight:800; color:#ffe98a; text-shadow:0 2px 6px rgba(0,0,0,.35); margin-top:2px; }
+
+  /* ---------- floating count labels ---------- */
+  .count-label{ position:absolute; left:0; top:0; transform:translate(-50%,-100%); pointer-events:none;
+    font-weight:900; white-space:nowrap; will-change:left,top; }
+  #flockLabel{ font-size:min(8vw,36px); color:#fff; padding:2px 16px; border-radius:22px;
+    background:linear-gradient(180deg, rgba(63,169,255,.92), rgba(35,120,220,.92));
+    box-shadow:0 4px 12px rgba(20,80,160,.35), inset 0 2px 0 rgba(255,255,255,.4);
+    text-shadow:0 2px 0 rgba(0,60,140,.4); transition:transform .12s ease-out; font-variant-numeric:tabular-nums; }
+  #flockLabel.pop{ transform:translate(-50%,-100%) scale(1.35); }
+  #flockLabel.pop-bad{ transform:translate(-50%,-100%) scale(.78); background:linear-gradient(180deg,rgba(255,77,94,.92),rgba(200,40,60,.92)); }
+  .enemy-label{ font-size:min(6.5vw,30px); color:#fff; padding:1px 14px; border-radius:20px;
+    background:linear-gradient(180deg, rgba(255,77,94,.92), rgba(196,32,52,.92));
+    box-shadow:0 4px 12px rgba(150,20,40,.35), inset 0 2px 0 rgba(255,255,255,.35);
+    text-shadow:0 2px 0 rgba(120,0,20,.4); display:none; font-variant-numeric:tabular-nums; }
+  .enemy-label.boss{ font-size:min(9vw,42px); padding:3px 20px; border-radius:26px;
+    background:linear-gradient(180deg, rgba(140,40,220,.94), rgba(90,15,160,.94));
+    box-shadow:0 0 24px rgba(160,60,255,.6), inset 0 2px 0 rgba(255,255,255,.35); }
+
+  /* op toast */
+  #opToast{ position:absolute; transform:translate(-50%,-50%); font-size:min(10vw,46px); font-weight:900;
+    opacity:0; pointer-events:none; text-shadow:0 3px 0 rgba(0,0,0,.18), 0 6px 16px rgba(0,0,0,.25); }
+  #opToast.play{ animation:toastUp .8s ease-out forwards; }
+  @keyframes toastUp{ 0%{opacity:0; margin-top:0; scale:.5;} 15%{opacity:1; scale:1.2;} 30%{scale:1;} 100%{opacity:0; margin-top:-90px; scale:1;} }
+
+  /* ---------- title ---------- */
+  #title{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column;
+    pointer-events:auto; cursor:pointer; }
+  #title .card{ text-align:center; padding:34px 44px 30px; border-radius:32px;
+    background:linear-gradient(165deg, rgba(255,255,255,.88), rgba(255,235,246,.82));
+    box-shadow:0 18px 50px rgba(200,90,130,.35), inset 0 2px 0 #fff; backdrop-filter:blur(6px);
+    animation:cardIn .5s cubic-bezier(.2,1.6,.4,1); max-width:88vw; }
+  @keyframes cardIn{ from{ transform:translateY(30px) scale(.9); opacity:0;} to{ transform:none; opacity:1;} }
+  #title .emoji{ font-size:min(16vw,68px); filter:drop-shadow(0 6px 10px rgba(230,80,140,.35)); animation:bobble 2.2s ease-in-out infinite; display:inline-block; }
+  @keyframes bobble{ 0%,100%{ transform:translateY(0) rotate(-4deg);} 50%{ transform:translateY(-10px) rotate(4deg);} }
+  #title h1{ font-size:min(11vw,52px); font-weight:900; color:var(--pink-deep); letter-spacing:-1px; margin:6px 0 4px;
+    text-shadow:0 3px 0 #ffd3e4; }
+  #title .tag{ font-size:min(4vw,17px); font-weight:700; color:#a4657f; margin-bottom:18px; }
+  #title .controls{ font-size:min(3.6vw,14px); color:#7c5a6b; line-height:1.75; font-weight:600; }
+  #title .controls b{ color:var(--pink-deep); }
+  #title .start{ margin-top:20px; display:inline-block; font-size:min(5vw,21px); font-weight:900; color:#fff;
+    background:linear-gradient(180deg,#ff7cb5,#f04a8b); padding:14px 42px; border-radius:40px;
+    box-shadow:0 6px 0 #c22e6b, 0 12px 24px rgba(220,60,120,.4); animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.06);} }
+
+  /* ---------- game over ---------- */
+  #over{ position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center, rgba(60,10,40,.35), rgba(40,5,30,.62)); pointer-events:auto; }
+  #over.show{ display:flex; }
+  #over .card{ text-align:center; padding:32px 48px; border-radius:30px;
+    background:linear-gradient(170deg,#fff,#ffe9f2); box-shadow:0 20px 60px rgba(0,0,0,.4), inset 0 2px 0 #fff;
+    animation:cardIn .45s cubic-bezier(.2,1.6,.4,1); max-width:86vw; }
+  #over h2{ font-size:min(11vw,46px); font-weight:900; color:#e0335f; margin-bottom:4px; }
+  #over .cause{ font-size:min(3.8vw,15px); font-weight:700; color:#9c6b80; margin-bottom:16px; }
+  #over .row{ font-size:min(5vw,21px); font-weight:800; color:#5c3a4d; margin:5px 0; }
+  #over .row b{ color:#e0335f; font-variant-numeric:tabular-nums; }
+  #over .newbest{ display:none; font-size:min(4.4vw,17px); font-weight:900; color:#fff; background:linear-gradient(90deg,#ffb43a,#ff7e2e);
+    border-radius:20px; padding:4px 16px; margin:8px auto 0; width:max-content; box-shadow:0 4px 12px rgba(255,140,40,.5); }
+  #over .newbest.show{ display:block; animation:pulse 1s ease-in-out infinite; }
+  #retry{ margin-top:20px; font-size:min(5vw,20px); font-weight:900; color:#fff; border:0; cursor:pointer;
+    background:linear-gradient(180deg,#ff7cb5,#f04a8b); padding:13px 46px; border-radius:36px;
+    box-shadow:0 6px 0 #c22e6b, 0 10px 22px rgba(220,60,120,.45); font-family:inherit; }
+  #retry:active{ transform:translateY(4px); box-shadow:0 2px 0 #c22e6b; }
+
+  /* ---------- mute ---------- */
+  #mute{ position:absolute; top:12px; right:12px; width:46px; height:46px; border-radius:50%; border:0; cursor:pointer;
+    background:rgba(255,255,255,.85); box-shadow:0 4px 12px rgba(180,80,120,.3); font-size:22px; pointer-events:auto;
+    display:flex; align-items:center; justify-content:center; }
+  #mute:active{ transform:scale(.92); }
+
+  #hint{ position:absolute; bottom:4vh; left:0; right:0; text-align:center; font-size:min(3.6vw,14px); font-weight:700;
+    color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.35); opacity:0; transition:opacity .4s; }
+  #hint.show{ opacity:.9; }
+
+  /* clash flash vignette */
+  #flash{ position:absolute; inset:0; pointer-events:none; opacity:0; background:radial-gradient(ellipse at center, transparent 45%, rgba(255,80,90,.45)); }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="ui">
+  <div id="flash"></div>
+  <div id="hud">
+    <div id="score">0</div>
+    <div id="subScore">거리 0m · 웨이브 0</div>
+    <div id="best">최고 0</div>
+  </div>
+  <div id="flockLabel" class="count-label">10</div>
+  <div id="opToast"></div>
+  <div id="title">
+    <div class="card">
+      <div class="emoji">🦩</div>
+      <h1>플라밍고 대군단</h1>
+      <div class="tag">관문을 골라 군단을 불리고, 적 무리를 뚫어라!</div>
+      <div class="controls">
+        🖱️ <b>드래그</b> 또는 <b>← → / A D</b> 로 좌우 이동<br>
+        <b>파란 관문</b>은 군단 증가, <b>빨간 관문</b>은 감소!<br>
+        악어 · 하이에나 · 멧돼지 무리와 <b>1:1 소멸</b> 전투
+      </div>
+      <div class="start">탭 또는 스페이스로 시작</div>
+    </div>
+  </div>
+  <div id="over">
+    <div class="card">
+      <h2>전멸!</h2>
+      <div class="cause" id="overCause">군단이 전부 쓰러졌습니다…</div>
+      <div class="row">점수 <b id="overScore">0</b></div>
+      <div class="row">최고 기록 <b id="overBest">0</b></div>
+      <div class="newbest" id="newBest">🏆 신기록 달성!</div>
+      <br>
+      <button id="retry">다시하기</button>
+    </div>
+  </div>
+  <button id="mute" title="소리 켜기/끄기">🔊</button>
+  <div id="hint">드래그로 좌우 이동 · 파란 관문을 노려라!</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ============================================================
+   유틸
+============================================================ */
+const qs = new URLSearchParams(location.search);
+const SCENARIO = qs.get('scenario') || '';
+const AUTOSTART = qs.has('autostart') || !!SCENARIO;
+const FREEZE = qs.has('freeze');
+const BOT = qs.has('bot');
+const SIMSEC = parseFloat(qs.get('simsec')||'0') || 0;
+
+const rand  = (a,b)=>a+Math.random()*(b-a);
+const randi = (a,b)=>Math.floor(rand(a,b+1));
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp  = (a,b,t)=>a+(b-a)*t;
+const fmt   = n=>Math.round(n).toLocaleString('ko-KR');
+const pick  = arr=>arr[Math.floor(Math.random()*arr.length)];
+
+const BEST_KEY = 'flamingo-gate-defense-best';
+const MUTE_KEY = 'flamingo-gate-defense-muted';
+
+/* ============================================================
+   웹오디오 신스 사운드
+============================================================ */
+const SFX = {
+  ctx:null, master:null, noiseBuf:null,
+  muted: localStorage.getItem(MUTE_KEY)==='1',
+  ensure(){
+    if(this.ctx) { if(this.ctx.state==='suspended') this.ctx.resume().catch(()=>{}); return; }
+    try{
+      this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.muted ? 0 : 0.5;
+      this.master.connect(this.ctx.destination);
+      const len = this.ctx.sampleRate;
+      this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = this.noiseBuf.getChannelData(0);
+      for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    }catch(e){ /* headless 등 오디오 불가 환경 */ }
+  },
+  ok(){ return this.ctx && this.ctx.state==='running' && !this.muted; },
+  setMuted(m){
+    this.muted = m; localStorage.setItem(MUTE_KEY, m?'1':'0');
+    if(this.master) this.master.gain.value = m?0:0.5;
+  },
+  tone(freq, dur, type='sine', vol=0.3, slideTo=null, delay=0){
+    if(!this.ok()) return;
+    const t0 = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(30,slideTo), t0+dur);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0+0.012);
+    g.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t0); o.stop(t0+dur+0.05);
+  },
+  noise(dur, vol=0.4, freq=800, q=1, delay=0){
+    if(!this.ok()) return;
+    const t0 = this.ctx.currentTime + delay;
+    const s = this.ctx.createBufferSource(); s.buffer=this.noiseBuf; s.loop=true;
+    const f = this.ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=freq; f.Q.value=q;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t0); s.stop(t0+dur+0.05);
+  },
+  gate(good, ratio){
+    if(good){
+      const base = 660 + clamp(ratio,1,3)*220;   // 좋을수록 높은 음
+      this.tone(base, .14, 'sine', .3);
+      this.tone(base*1.5, .22, 'sine', .26, null, .07);
+      this.tone(base*2, .3, 'triangle', .12, null, .12);
+    }else{
+      this.tone(300, .2, 'sawtooth', .22, 170);
+      this.tone(150, .3, 'square', .12, 90, .05);
+    }
+  },
+  clash(){
+    this.noise(.7, .5, 420, 1.2);
+    this.tone(70, .6, 'sawtooth', .35, 42);
+    this.tone(52, .8, 'sine', .4, 30);
+  },
+  tick(){ this.tone(rand(1700,2300), .04, 'square', .07); },
+  win(){
+    this.tone(523, .12, 'square', .2);
+    this.tone(659, .12, 'square', .2, null, .1);
+    this.tone(784, .25, 'square', .22, null, .2);
+  },
+  defeat(){
+    this.tone(392, .3, 'sawtooth', .3, 370);
+    this.tone(311, .3, 'sawtooth', .3, 290, .28);
+    this.tone(233, .8, 'sawtooth', .32, 110, .56);
+  },
+  horn(){
+    this.tone(98, 1.1, 'sawtooth', .3, 92);
+    this.tone(147, 1.1, 'sawtooth', .2, 139, .05);
+    this.noise(1, .12, 300, 1, .05);
+  },
+  confetti(){
+    for(let i=0;i<6;i++) this.tone(700+i*180, .1, 'triangle', .14, null, i*.05);
+    this.tone(1046, .5, 'sine', .18, null, .3);
+  }
+};
+
+/* ============================================================
+   렌더러 · 씬 · 카메라
+============================================================ */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xffd2ae, 42, 175);
+
+// 하늘 그라데이션 (피치 → 시안)
+{
+  const c = document.createElement('canvas'); c.width=2; c.height=512;
+  const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0,0,0,512);
+  gr.addColorStop(0.00,'#5fd4ff');
+  gr.addColorStop(0.42,'#a9ecff');
+  gr.addColorStop(0.62,'#ffe3bc');
+  gr.addColorStop(0.78,'#ffc79b');
+  gr.addColorStop(1.00,'#ffb48d');
+  g.fillStyle=gr; g.fillRect(0,0,2,512);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = tex;
+}
+
+const BASE_FOV = 58;
+const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth/window.innerHeight, 0.1, 420);
+camera.position.set(0, 6.8, 10.4);
+
+scene.add(new THREE.HemisphereLight(0xcaf4ff, 0xffd9c0, 1.05));
+const sun = new THREE.DirectionalLight(0xfff2dd, 1.35);
+sun.position.set(6, 14, 6);
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ============================================================
+   지오메트리 빌더 (버텍스 컬러 로우폴리)
+============================================================ */
+const M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), E3 = new THREE.Euler(), V3A = new THREE.Vector3();
+function part(geo, color, x=0,y=0,z=0, rx=0,ry=0,rz=0, sx=1,sy=1,sz=1){
+  const g = geo.index ? geo.toNonIndexed() : geo.clone();
+  geo.dispose();
+  M4.compose(V3A.set(x,y,z), Q4.setFromEuler(E3.set(rx,ry,rz)), new THREE.Vector3(sx,sy,sz));
+  g.applyMatrix4(M4);
+  const c = new THREE.Color(color);
+  const n = g.attributes.position.count;
+  const cols = new Float32Array(n*3);
+  for(let i=0;i<n;i++){ cols[i*3]=c.r; cols[i*3+1]=c.g; cols[i*3+2]=c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(cols,3));
+  return g;
+}
+function mergeParts(parts){
+  let total=0; for(const p of parts) total += p.attributes.position.count;
+  const pos = new Float32Array(total*3), nor = new Float32Array(total*3), col = new Float32Array(total*3);
+  let o=0;
+  for(const p of parts){
+    pos.set(p.attributes.position.array, o*3);
+    nor.set(p.attributes.normal.array, o*3);
+    col.set(p.attributes.color.array, o*3);
+    o += p.attributes.position.count;
+    p.dispose();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  g.setAttribute('normal',   new THREE.BufferAttribute(nor,3));
+  g.setAttribute('color',    new THREE.BufferAttribute(col,3));
+  return g;
+}
+const crowdMat = new THREE.MeshLambertMaterial({ vertexColors:true });
+
+// --- 플라밍고 (전방 -z)
+function buildFlamingo(crowned){
+  const BODY='#ff85b3', WING='#f2669c', LEG='#f08bab', BEAK_B='#ffe3ec', BEAK_T='#42304a', HEAD='#ff8fb9';
+  const p = [
+    part(new THREE.CylinderGeometry(.028,.028,.42,5), LEG, -.08,.21,.04),
+    part(new THREE.CylinderGeometry(.028,.028,.42,5), LEG,  .08,.21,-.02),
+    part(new THREE.SphereGeometry(.24,10,8), BODY, 0,.55,0, 0,0,0, 1,.82,1.22),
+    part(new THREE.SphereGeometry(.14,8,6), WING, -.19,.58,.02, 0,0,.4, .55,.85,1.15),
+    part(new THREE.SphereGeometry(.14,8,6), WING,  .19,.58,.02, 0,0,-.4, .55,.85,1.15),
+    part(new THREE.SphereGeometry(.11,8,6), WING, 0,.62,.26, .5,0,0, .7,.8,1),           // 꼬리깃
+    part(new THREE.CylinderGeometry(.048,.058,.42,6), HEAD, 0,.8,-.22, .5,0,0),          // 목
+    part(new THREE.SphereGeometry(.105,8,7), HEAD, 0,1.0,-.32),
+    part(new THREE.CylinderGeometry(.04,.055,.11,6), BEAK_B, 0,.985,-.43, 1.35,0,0),
+    part(new THREE.ConeGeometry(.04,.11,6), BEAK_T, 0,.93,-.49, -2.5,0,0),
+  ];
+  if(crowned){
+    p.push(part(new THREE.ConeGeometry(.075,.12,5), '#ffd23e', 0,1.15,-.31));
+    p.push(part(new THREE.SphereGeometry(.03,6,5), '#ffd23e', 0,1.22,-.31));
+  }
+  return mergeParts(p);
+}
+
+// --- 적: 악어 (전방 +z)
+function buildCroc(){
+  const BODY='#3fae57', DARK='#2e8b46', BELLY='#8fdc9c', EYE='#fff7e0';
+  const p = [
+    part(new THREE.SphereGeometry(.3,9,7), BODY, 0,.32,0, 0,0,0, .9,.62,1.5),
+    part(new THREE.SphereGeometry(.17,8,6), BODY, 0,.34,.5, 0,0,0, .82,.6,1.3),           // 주둥이
+    part(new THREE.SphereGeometry(.16,7,5), DARK, 0,.3,-.52, .3,0,0, .7,.5,1.2),          // 꼬리
+    part(new THREE.ConeGeometry(.09,.22,5), DARK, 0,.32,-.78, -1.9,0,0),
+    part(new THREE.ConeGeometry(.07,.14,4), DARK, 0,.55,-.1, -.4,0,0),                     // 등 돌기
+    part(new THREE.ConeGeometry(.06,.12,4), DARK, 0,.53,-.32, -.5,0,0),
+    part(new THREE.SphereGeometry(.05,6,5), EYE, -.11,.47,.32),
+    part(new THREE.SphereGeometry(.05,6,5), EYE,  .11,.47,.32),
+    part(new THREE.SphereGeometry(.026,5,4), '#26212b', -.11,.475,.36),
+    part(new THREE.SphereGeometry(.026,5,4), '#26212b',  .11,.475,.36),
+    part(new THREE.CylinderGeometry(.06,.07,.2,5), BELLY, -.2,.1,.3),
+    part(new THREE.CylinderGeometry(.06,.07,.2,5), BELLY,  .2,.1,.3),
+    part(new THREE.CylinderGeometry(.06,.07,.2,5), BELLY, -.2,.1,-.3),
+    part(new THREE.CylinderGeometry(.06,.07,.2,5), BELLY,  .2,.1,-.3),
+  ];
+  return mergeParts(p);
+}
+
+// --- 적: 하이에나
+function buildHyena(){
+  const BODY='#b08b5e', DARK='#7a5c3a', SNOUT='#4b3826', EYE='#ffe9c9';
+  const p = [
+    part(new THREE.SphereGeometry(.26,9,7), BODY, 0,.42,-.04, 0,0,0, .8,.85,1.25),
+    part(new THREE.SphereGeometry(.17,8,6), BODY, 0,.6,.3, 0,0,0, .85,.85,.95),
+    part(new THREE.SphereGeometry(.09,7,5), SNOUT, 0,.55,.46, 0,0,0, .8,.7,1.1),
+    part(new THREE.ConeGeometry(.06,.13,4), DARK, -.1,.76,.28),
+    part(new THREE.ConeGeometry(.06,.13,4), DARK,  .1,.76,.28),
+    part(new THREE.ConeGeometry(.07,.2,4), DARK, 0,.63,-.05, -.9,0,0),                    // 갈기
+    part(new THREE.ConeGeometry(.06,.17,4), DARK, 0,.58,-.25, -1.1,0,0),
+    part(new THREE.SphereGeometry(.034,6,5), EYE, -.08,.65,.42),
+    part(new THREE.SphereGeometry(.034,6,5), EYE,  .08,.65,.42),
+    part(new THREE.CylinderGeometry(.045,.05,.34,5), BODY, -.13,.17,.22),
+    part(new THREE.CylinderGeometry(.045,.05,.34,5), BODY,  .13,.17,.22),
+    part(new THREE.CylinderGeometry(.045,.05,.34,5), DARK, -.13,.17,-.24),
+    part(new THREE.CylinderGeometry(.045,.05,.34,5), DARK,  .13,.17,-.24),
+    part(new THREE.ConeGeometry(.05,.2,4), DARK, 0,.5,-.42, -2.4,0,0),
+  ];
+  return mergeParts(p);
+}
+
+// --- 적: 멧돼지
+function buildBoar(){
+  const BODY='#5b5560', DARK='#403b47', SNOUT='#e79aa8', TUSK='#fff6e0';
+  const p = [
+    part(new THREE.SphereGeometry(.3,9,7), BODY, 0,.38,-.02, 0,0,0, .95,.85,1.3),
+    part(new THREE.SphereGeometry(.19,8,6), DARK, 0,.44,.34, 0,0,0, .9,.85,.9),
+    part(new THREE.CylinderGeometry(.075,.09,.12,7), SNOUT, 0,.4,.53, 1.57,0,0),
+    part(new THREE.ConeGeometry(.035,.14,5), TUSK, -.12,.32,.48, -1,0,.4),
+    part(new THREE.ConeGeometry(.035,.14,5), TUSK,  .12,.32,.48, -1,0,-.4),
+    part(new THREE.ConeGeometry(.055,.11,4), DARK, -.11,.62,.3),
+    part(new THREE.ConeGeometry(.055,.11,4), DARK,  .11,.62,.3),
+    part(new THREE.ConeGeometry(.08,.24,4), DARK, 0,.62,-.05, -1.2,0,0),                  // 등털
+    part(new THREE.SphereGeometry(.032,6,5), '#ffdca8', -.09,.5,.44),
+    part(new THREE.SphereGeometry(.032,6,5), '#ffdca8',  .09,.5,.44),
+    part(new THREE.CylinderGeometry(.05,.055,.3,5), DARK, -.15,.15,.22),
+    part(new THREE.CylinderGeometry(.05,.055,.3,5), DARK,  .15,.15,.22),
+    part(new THREE.CylinderGeometry(.05,.055,.3,5), DARK, -.15,.15,-.26),
+    part(new THREE.CylinderGeometry(.05,.055,.3,5), DARK,  .15,.15,-.26),
+  ];
+  return mergeParts(p);
+}
+
+// --- 적: 뱀
+function buildSnake(){
+  const BODY='#a9c94e', DARK='#7d9b32', EYE='#fff2c9', TONGUE='#ff4d5e';
+  const p = [
+    part(new THREE.TorusGeometry(.26,.1,7,14), BODY, 0,.11,0, Math.PI/2,0,0),
+    part(new THREE.TorusGeometry(.17,.09,7,12), DARK, 0,.27,-.02, Math.PI/2,0,0),
+    part(new THREE.CylinderGeometry(.075,.09,.34,7), BODY, 0,.47,-.06, .25,0,0),
+    part(new THREE.SphereGeometry(.11,8,6), BODY, 0,.66,-.01, 0,0,0, .95,.8,1.15),
+    part(new THREE.SphereGeometry(.035,6,5), EYE, -.06,.7,.08),
+    part(new THREE.SphereGeometry(.035,6,5), EYE,  .06,.7,.08),
+    part(new THREE.ConeGeometry(.014,.14,4), TONGUE, 0,.64,.16, 1.9,0,0),
+  ];
+  return mergeParts(p);
+}
+
+// --- 야자수
+function buildPalm(){
+  const TRUNK='#c98a5b', LEAF='#3ecf6e', LEAF2='#2eb75c', NUT='#8a5a34';
+  const p = [ part(new THREE.CylinderGeometry(.14,.22,2.7,6), TRUNK, 0,1.35,0, .08,0,.06) ];
+  // 잎: 바깥으로 눕힌 콘
+  for(let i=0;i<6;i++){
+    const a = i/6*Math.PI*2 + .3;
+    const g = part(new THREE.ConeGeometry(.3,2.1,4), i%2?LEAF:LEAF2, 0,1.0,0, 0,0,0, 1.3,.9,.4);
+    M4.makeRotationZ(-1.38); g.applyMatrix4(M4);
+    M4.makeRotationY(a); g.applyMatrix4(M4);
+    M4.makeTranslation(0,2.62,0); g.applyMatrix4(M4);
+    p.push(g);
+  }
+  p.push(part(new THREE.SphereGeometry(.13,6,5), NUT, .16,2.55,.1));
+  p.push(part(new THREE.SphereGeometry(.13,6,5), NUT, -.14,2.5,-.08));
+  return mergeParts(p);
+}
+
+// --- 섬 (모래 + 미니 야자)
+function buildIsland(){
+  const p = [
+    part(new THREE.SphereGeometry(1,12,8), '#ffe6ae', 0,0,0, 0,0,0, 6,1.6,4.4),
+    part(new THREE.SphereGeometry(1,10,7), '#ffdf9a', 2.5,.3,1, 0,0,0, 2.5,1,2),
+  ];
+  const palmParts = [ part(new THREE.CylinderGeometry(.16,.26,3.2,6), '#c98a5b', 0,3,0, -.1,0,.12) ];
+  for(let i=0;i<6;i++){
+    const a = i/6*Math.PI*2;
+    const g = part(new THREE.ConeGeometry(.36,2.6,4), i%2?'#3ecf6e':'#2eb75c', 0,1.3,0, 0,0,0, 1.3,.9,.42);
+    M4.makeRotationZ(-1.35); g.applyMatrix4(M4);
+    M4.makeRotationY(a); g.applyMatrix4(M4);
+    M4.makeTranslation(0,4.5,0); g.applyMatrix4(M4);
+    palmParts.push(g);
+  }
+  for(const g of palmParts){ M4.makeTranslation(-1,1,0); g.applyMatrix4(M4); p.push(g); }
+  return mergeParts(p);
+}
+
+// --- 구름
+function buildCloud(){
+  const C='#ffffff';
+  return mergeParts([
+    part(new THREE.SphereGeometry(1,8,6), C, 0,0,0, 0,0,0, 1.6,.85,1),
+    part(new THREE.SphereGeometry(.7,8,6), C, 1.4,.1,.2),
+    part(new THREE.SphereGeometry(.75,8,6), C, -1.3,.05,-.1),
+    part(new THREE.SphereGeometry(.5,7,5), C, .4,.55,0),
+  ]);
+}
+
+/* ============================================================
+   월드 드레싱: 물 · 트랙 · 레일 · 야자수 · 섬 · 구름 · 태양
+============================================================ */
+const world = new THREE.Group();
+scene.add(world);
+
+// 물
+{
+  const water = new THREE.Mesh(
+    new THREE.PlaneGeometry(600, 620),
+    new THREE.MeshLambertMaterial({ color:0x39d6d0 })
+  );
+  water.rotation.x = -Math.PI/2;
+  water.position.set(0, -0.55, -180);
+  world.add(water);
+}
+
+const TRACK_HALF = 4.5;
+// 트랙 본체
+{
+  const track = new THREE.Mesh(
+    new THREE.BoxGeometry(TRACK_HALF*2+0.6, 0.7, 380),
+    new THREE.MeshLambertMaterial({ color:0xfff3e0 })
+  );
+  track.position.set(0, -0.35, -160);
+  world.add(track);
+  // 사이드 레일 (코럴 핑크)
+  const railGeo = new THREE.BoxGeometry(0.45, 0.5, 380);
+  const railMat = new THREE.MeshLambertMaterial({ color:0xff8fb4 });
+  const railL = new THREE.Mesh(railGeo, railMat); railL.position.set(-(TRACK_HALF+0.5), 0.15, -160);
+  const railR = new THREE.Mesh(railGeo, railMat); railR.position.set( (TRACK_HALF+0.5), 0.15, -160);
+  world.add(railL, railR);
+  const stripGeo = new THREE.BoxGeometry(0.16, 0.06, 380);
+  const stripMat = new THREE.MeshLambertMaterial({ color:0xffffff });
+  const sL = new THREE.Mesh(stripGeo, stripMat); sL.position.set(-(TRACK_HALF+0.5), 0.42, -160);
+  const sR = new THREE.Mesh(stripGeo, stripMat); sR.position.set( (TRACK_HALF+0.5), 0.42, -160);
+  world.add(sL, sR);
+}
+
+// 스크롤 차선 대시 (움직임 체감)
+const dashes = [];
+{
+  const dashGeo = new THREE.BoxGeometry(0.14, 0.04, 1.7);
+  const dashMat = new THREE.MeshLambertMaterial({ color:0xffd9e6 });
+  for(let col of [-1.6, 1.6]){
+    for(let i=0;i<26;i++){
+      const d = new THREE.Mesh(dashGeo, dashMat);
+      d.position.set(col, 0.03, -i*13 + 5);
+      world.add(d); dashes.push(d);
+    }
+  }
+}
+
+// 태양 스프라이트
+{
+  const c = document.createElement('canvas'); c.width=c.height=128;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64,64,4,64,64,64);
+  gr.addColorStop(0,'rgba(255,252,230,1)');
+  gr.addColorStop(0.25,'rgba(255,240,190,0.9)');
+  gr.addColorStop(1,'rgba(255,220,160,0)');
+  g.fillStyle=gr; g.fillRect(0,0,128,128);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sunSpr = new THREE.Mesh(
+    new THREE.PlaneGeometry(70,70),
+    new THREE.MeshBasicMaterial({ map:tex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, fog:false })
+  );
+  sunSpr.position.set(-55, 42, -230);
+  world.add(sunSpr);
+}
+
+// 야자수 풀
+const palms = [];
+{
+  const geo = buildPalm();
+  for(let i=0;i<14;i++){
+    const m = new THREE.Mesh(geo, crowdMat);
+    const side = i%2 ? 1 : -1;
+    m.position.set(side*rand(6.8,11), -0.35, -i*19 - rand(0,10));
+    const s = rand(.85,1.5); m.scale.set(s,s,s);
+    m.rotation.y = rand(0,Math.PI*2);
+    world.add(m); palms.push(m);
+  }
+}
+// 섬 풀
+const islands = [];
+{
+  const geo = buildIsland();
+  for(let i=0;i<5;i++){
+    const m = new THREE.Mesh(geo, crowdMat);
+    const side = i%2 ? 1 : -1;
+    m.position.set(side*rand(19,34), -0.9, -i*55 - rand(0,25));
+    const s = rand(.8,1.6); m.scale.set(s,s,s);
+    m.rotation.y = rand(0,Math.PI*2);
+    world.add(m); islands.push(m);
+  }
+}
+// 구름 풀
+const clouds = [];
+{
+  const geo = buildCloud();
+  const mat = new THREE.MeshLambertMaterial({ vertexColors:true, fog:false });
+  for(let i=0;i<7;i++){
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(rand(-70,70), rand(17,34), -i*38 - rand(0,20));
+    const s = rand(2,4.4); m.scale.set(s,s*.8,s);
+    world.add(m); clouds.push(m);
+  }
+}
+
+/* ============================================================
+   플라밍고 군단
+============================================================ */
+const FLOCK_CAP = 150;
+const flamingoGeo = buildFlamingo(false);
+const leaderGeo = buildFlamingo(true);
+const flock = new THREE.InstancedMesh(flamingoGeo, crowdMat, FLOCK_CAP);
+flock.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(flock);
+const leader = new THREE.Mesh(leaderGeo, crowdMat);
+leader.scale.setScalar(1.45);
+scene.add(leader);
+
+// 군단 배치 오프셋 (황금각 나선)
+const flockOffsets = [];
+for(let i=0;i<FLOCK_CAP;i++){
+  const r = 0.34*Math.sqrt(i+1), a = i*2.39996;
+  flockOffsets.push({
+    x: Math.cos(a)*r*1.25,
+    z: Math.sin(a)*r + 0.85 + i*0.008,
+    phase: rand(0,Math.PI*2),
+    speed: rand(8,12),
+  });
+}
+const dummy = new THREE.Object3D();
+
+/* ============================================================
+   관문(게이트)
+============================================================ */
+const GATE_W = 3.9, GATE_H = 3.1, GATE_Y = 1.85, GATE_X = 2.18;
+function makeGlowTexture(colA, colB){
+  const c = document.createElement('canvas'); c.width=c.height=128;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64,64,8,64,64,64);
+  gr.addColorStop(0,colA); gr.addColorStop(1,colB);
+  g.fillStyle=gr; g.fillRect(0,0,128,128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const glowBlue = makeGlowTexture('rgba(90,190,255,0.85)','rgba(60,140,255,0)');
+const glowRed  = makeGlowTexture('rgba(255,110,120,0.85)','rgba(255,60,80,0)');
+
+function drawGatePanel(canvas, label, good){
+  const g = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  g.clearRect(0,0,W,H);
+  const r = 34;
+  // 유리판
+  g.beginPath(); g.roundRect(10,10,W-20,H-20,r);
+  const gr = g.createLinearGradient(0,0,0,H);
+  if(good){ gr.addColorStop(0,'rgba(120,205,255,.78)'); gr.addColorStop(1,'rgba(40,120,235,.72)'); }
+  else    { gr.addColorStop(0,'rgba(255,130,140,.78)'); gr.addColorStop(1,'rgba(215,40,70,.74)'); }
+  g.fillStyle = gr; g.fill();
+  // 하이라이트
+  g.beginPath(); g.roundRect(22,20,W-44,H*0.3,24);
+  g.fillStyle = 'rgba(255,255,255,.28)'; g.fill();
+  // 테두리
+  g.lineWidth = 10;
+  g.strokeStyle = good ? 'rgba(210,242,255,.95)' : 'rgba(255,220,225,.95)';
+  g.beginPath(); g.roundRect(10,10,W-20,H-20,r); g.stroke();
+  // 라벨
+  g.font = '900 118px "Arial Black", system-ui, sans-serif';
+  g.textAlign='center'; g.textBaseline='middle';
+  g.shadowColor = good ? 'rgba(0,70,180,.7)' : 'rgba(150,0,30,.7)';
+  g.shadowBlur = 16; g.shadowOffsetY = 6;
+  g.fillStyle='#fff';
+  g.fillText(label, W/2, H/2+14);
+  g.shadowColor='transparent';
+}
+
+const gatePool = [];
+const GATE_POOL_N = 6;
+{
+  const postGeo = new THREE.BoxGeometry(0.17, GATE_H+0.5, 0.17);
+  const barGeo  = new THREE.BoxGeometry(GATE_W+0.2, 0.17, 0.17);
+  const postMat = new THREE.MeshLambertMaterial({ color:0xfffdf5 });
+  for(let i=0;i<GATE_POOL_N;i++){
+    const grp = new THREE.Group();
+    const panels = [];
+    for(let side=0; side<2; side++){
+      const px = side===0 ? -GATE_X : GATE_X;
+      const sub = new THREE.Group(); sub.position.x = px;
+      const canvas = document.createElement('canvas'); canvas.width=384; canvas.height=288;
+      const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
+      const panel = new THREE.Mesh(
+        new THREE.PlaneGeometry(GATE_W, GATE_H),
+        new THREE.MeshBasicMaterial({ map:tex, transparent:true, side:THREE.DoubleSide, depthWrite:false })
+      );
+      panel.position.y = GATE_Y;
+      const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(GATE_W*1.35, GATE_H*1.45),
+        new THREE.MeshBasicMaterial({ map:glowBlue, transparent:true, blending:THREE.AdditiveBlending,
+          depthWrite:false, side:THREE.DoubleSide, opacity:0.75 })
+      );
+      glow.position.set(0, GATE_Y, -0.06);
+      const pL = new THREE.Mesh(postGeo, postMat); pL.position.set(-GATE_W/2-0.1, GATE_H/2+0.1, 0);
+      const pR = new THREE.Mesh(postGeo, postMat); pR.position.set( GATE_W/2+0.1, GATE_H/2+0.1, 0);
+      const bar = new THREE.Mesh(barGeo, postMat); bar.position.set(0, GATE_H+0.42, 0);
+      sub.add(glow, panel, pL, pR, bar);
+      grp.add(sub);
+      panels.push({ sub, panel, glow, canvas, tex, op:null, flash:0 });
+    }
+    grp.visible = false;
+    scene.add(grp);
+    gatePool.push({ grp, panels, active:false, passed:false, prevZ:0 });
+  }
+}
+
+// 게이트 연산
+function opLabel(op){
+  if(op.t==='add') return '+'+op.n;
+  if(op.t==='sub') return '−'+op.n;
+  if(op.t==='mul') return '×'+op.n;
+  return '÷'+op.n;
+}
+function opGood(op){ return op.t==='add' || op.t==='mul'; }
+function applyOp(op, c){
+  if(op.t==='add') return c + op.n;
+  if(op.t==='sub') return Math.max(0, c - op.n);
+  if(op.t==='mul') return c * op.n;
+  return Math.max(1, Math.ceil(c / op.n));
+}
+function opValue(op, c){ return applyOp(op, c) - c; }
+
+function genOpPair(diff, forceGood){
+  const addN = ()=>randi(4 + Math.floor(diff*3), 11 + Math.floor(diff*12));
+  const subN = ()=>randi(4, 8 + Math.floor(diff*9));
+  const goodOp = ()=> (Math.random()<0.62 ? {t:'add', n:addN()} : {t:'mul', n:(Math.random()<0.8?2:3)});
+  const badOp  = ()=> (Math.random()<0.72 ? {t:'sub', n:subN()} : {t:'div', n:2});
+  let a, b;
+  const roll = Math.random();
+  if(forceGood || roll < 0.58){ a = goodOp(); b = badOp(); }          // 좋음 vs 나쁨
+  else if(roll < 0.83){ a = goodOp(); b = goodOp();                    // 둘 다 좋음(차이 나게)
+    for(let k=0;k<4 && opLabel(a)===opLabel(b);k++) b = goodOp();
+  } else { a = badOp(); b = badOp();                                    // 둘 다 나쁨! 덜 나쁜 걸 고르자
+    for(let k=0;k<4 && opLabel(a)===opLabel(b);k++) b = badOp();
+  }
+  return Math.random()<0.5 ? [a,b] : [b,a];
+}
+
+function spawnGate(z, forceGood){
+  const gate = gatePool.find(x=>!x.active);
+  if(!gate) return;
+  const ops = genOpPair(G.diff, forceGood);
+  for(let s=0;s<2;s++){
+    const p = gate.panels[s];
+    p.op = ops[s]; p.flash = 0;
+    const good = opGood(p.op);
+    drawGatePanel(p.canvas, opLabel(p.op), good);
+    p.tex.needsUpdate = true;
+    p.glow.material.map = good ? glowBlue : glowRed;
+    p.glow.material.opacity = 0.75;
+    p.sub.scale.setScalar(1);
+  }
+  gate.grp.position.set(0, 0, z);
+  gate.grp.visible = true;
+  gate.active = true; gate.passed = false; gate.prevZ = z;
+}
+
+/* ============================================================
+   적 웨이브 & 보스
+============================================================ */
+const ENEMY_TYPES = [
+  { name:'croc',  geo:buildCroc(),  color:0x3fae57, kr:'악어' },
+  { name:'hyena', geo:buildHyena(), color:0xb08b5e, kr:'하이에나' },
+  { name:'boar',  geo:buildBoar(),  color:0x5b5560, kr:'멧돼지' },
+  { name:'snake', geo:buildSnake(), color:0xa9c94e, kr:'뱀' },
+];
+const WAVE_CAP = 110;
+const WAVE_POOL_N = 3;
+const wavePool = [];
+for(let i=0;i<WAVE_POOL_N;i++){
+  const meshes = ENEMY_TYPES.map(t=>{
+    const m = new THREE.InstancedMesh(t.geo, crowdMat, WAVE_CAP);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.visible = false; m.frustumCulled = false;
+    scene.add(m);
+    return m;
+  });
+  const offsets = [];
+  for(let j=0;j<WAVE_CAP;j++){
+    const r = 0.4*Math.sqrt(j+1), a = j*2.39996 + i;
+    offsets.push({ x:Math.cos(a)*r*1.35, z:Math.sin(a)*r, phase:rand(0,Math.PI*2) });
+  }
+  wavePool.push({ active:false, boss:false, type:0, count:0, startCount:0, z:0, x:0,
+    meshes, offsets, label:null, prevZ:0, hornPlayed:false });
+}
+// 보스 메쉬 (타입별 1개, 스케일 업)
+const bossMeshes = ENEMY_TYPES.map(t=>{
+  const m = new THREE.Mesh(t.geo, crowdMat);
+  m.scale.setScalar(6.2);
+  m.visible = false;
+  scene.add(m);
+  return m;
+});
+
+function waveCount(){ // 이번 웨이브 적 수
+  const base = 6 + G.wavesSpawned*4 + G.distance*0.04;
+  return Math.max(5, Math.round(base * rand(0.82,1.18)));
+}
+
+function spawnWave(z, opts={}){
+  const w = wavePool.find(x=>!x.active);
+  if(!w) return null;
+  w.active = true;
+  w.boss = !!opts.boss;
+  w.type = opts.type!==undefined ? opts.type : randi(0, ENEMY_TYPES.length-1);
+  w.count = opts.count!==undefined ? opts.count : (w.boss ? Math.round(waveCount()*2.0) : waveCount());
+  w.startCount = w.count;
+  w.z = z; w.prevZ = z;
+  w.x = w.boss ? 0 : rand(-1.2, 1.2);
+  w.hornPlayed = false;
+  w.label = acquireLabel(w.boss);
+  if(w.boss){
+    const bm = bossMeshes[w.type];
+    bm.visible = true;
+    bm.position.set(0, 0, z);
+  }else{
+    w.meshes[w.type].visible = true;
+  }
+  return w;
+}
+function despawnWave(w){
+  w.active = false;
+  for(const m of w.meshes){ m.visible=false; }
+  bossMeshes.forEach(m=>m.visible=false);
+  if(w.label){ releaseLabel(w.label); w.label=null; }
+}
+
+/* ============================================================
+   HTML 라벨 풀 & 투영
+============================================================ */
+const ui = document.getElementById('ui');
+const labelPool = [];
+for(let i=0;i<4;i++){
+  const d = document.createElement('div');
+  d.className = 'count-label enemy-label';
+  ui.appendChild(d);
+  labelPool.push({ el:d, used:false });
+}
+function acquireLabel(boss){
+  const l = labelPool.find(x=>!x.used);
+  if(!l) return null;
+  l.used = true;
+  l.el.classList.toggle('boss', !!boss);
+  l.el.style.display = 'block';
+  return l;
+}
+function releaseLabel(l){ l.used=false; l.el.style.display='none'; }
+
+const projV = new THREE.Vector3();
+function placeLabel(el, x, y, z){
+  projV.set(x,y,z).project(camera);
+  if(projV.z > 1){ el.style.display='none'; return; }
+  el.style.display='block';
+  el.style.left = ((projV.x*0.5+0.5)*window.innerWidth) + 'px';
+  el.style.top  = ((-projV.y*0.5+0.5)*window.innerHeight) + 'px';
+}
+
+/* ============================================================
+   파티클: 퍼프 · 콘페티 · 잔해
+============================================================ */
+const dotTex = (()=>{ // 부드러운 원형 파티클 텍스처
+  const c = document.createElement('canvas'); c.width=c.height=64;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(32,32,2,32,32,32);
+  gr.addColorStop(0,'rgba(255,255,255,1)');
+  gr.addColorStop(0.55,'rgba(255,255,255,.85)');
+  gr.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=gr; g.fillRect(0,0,64,64);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
+function makePoints(n, size, opacity){
+  const g = new THREE.BufferGeometry();
+  const pos = new Float32Array(n*3), col = new Float32Array(n*3);
+  for(let i=0;i<n;i++){ pos[i*3+1] = -999; }
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  g.setAttribute('color', new THREE.BufferAttribute(col,3));
+  const m = new THREE.PointsMaterial({ size, vertexColors:true, transparent:true, opacity, depthWrite:false, sizeAttenuation:true, map:dotTex });
+  const pts = new THREE.Points(g,m);
+  pts.frustumCulled = false;
+  scene.add(pts);
+  return { pts, pos:g.attributes.position, col:g.attributes.color,
+    vel:new Float32Array(n*3), life:new Float32Array(n), n, cursor:0 };
+}
+const puff = makePoints(220, 0.34, 0.9);
+const confetti = makePoints(300, 0.22, 1);
+
+function spawnPuff(x,y,z, count, cr,cg,cb){
+  for(let i=0;i<count;i++){
+    const k = puff.cursor = (puff.cursor+1)%puff.n;
+    puff.pos.setXYZ(k, x+rand(-.5,.5), y+rand(0,.7), z+rand(-.5,.5));
+    puff.vel[k*3]=rand(-2,2); puff.vel[k*3+1]=rand(1.5,4.5); puff.vel[k*3+2]=rand(-2,2);
+    puff.life[k]=rand(.4,.8);
+    const t = rand(.8,1);
+    puff.col.setXYZ(k, cr*t, cg*t, cb*t);
+  }
+}
+const confColor = new THREE.Color();
+function spawnConfetti(x,y,z, count){
+  for(let i=0;i<count;i++){
+    const k = confetti.cursor = (confetti.cursor+1)%confetti.n;
+    confetti.pos.setXYZ(k, x+rand(-1,1), y+rand(0,2), z+rand(-1,1));
+    confetti.vel[k*3]=rand(-5,5); confetti.vel[k*3+1]=rand(4,11); confetti.vel[k*3+2]=rand(-5,5);
+    confetti.life[k]=rand(1,1.9);
+    confColor.setHSL(Math.random(), .9, .6);
+    confetti.col.setXYZ(k, confColor.r, confColor.g, confColor.b);
+  }
+}
+function updatePoints(P, dt, grav){
+  const arr = P.pos.array, vel = P.vel;
+  for(let i=0;i<P.n;i++){
+    if(P.life[i]<=0) continue;
+    P.life[i]-=dt;
+    if(P.life[i]<=0){ arr[i*3+1]=-999; continue; }
+    arr[i*3]+=vel[i*3]*dt; arr[i*3+1]+=vel[i*3+1]*dt; arr[i*3+2]+=vel[i*3+2]*dt;
+    vel[i*3+1]-=grav*dt;
+  }
+  P.pos.needsUpdate = true;
+  P.col.needsUpdate = true;
+}
+
+// 잔해(작은 몸통이 날아감)
+const DEBRIS_N = 70;
+const debris = new THREE.InstancedMesh(
+  new THREE.IcosahedronGeometry(0.16, 0),
+  new THREE.MeshLambertMaterial({ color:0xffffff }),
+  DEBRIS_N
+);
+debris.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+debris.frustumCulled = false;
+scene.add(debris);
+const debrisData = [];
+for(let i=0;i<DEBRIS_N;i++) debrisData.push({ life:0, x:0,y:0,z:0, vx:0,vy:0,vz:0, rx:0,ry:0, s:1 });
+let debrisCursor = 0;
+const debrisColor = new THREE.Color();
+function spawnDebris(x,y,z, hex, count){
+  for(let i=0;i<count;i++){
+    debrisCursor = (debrisCursor+1)%DEBRIS_N;
+    const d = debrisData[debrisCursor];
+    d.life = rand(.5,.9);
+    d.x=x+rand(-.6,.6); d.y=y+rand(.1,.8); d.z=z+rand(-.4,.4);
+    d.vx=rand(-4,4); d.vy=rand(3,8); d.vz=rand(-3,3);
+    d.rx=rand(0,6); d.ry=rand(0,6); d.s=rand(.6,1.4);
+    debrisColor.set(hex);
+    debris.setColorAt(debrisCursor, debrisColor);
+  }
+  if(debris.instanceColor) debris.instanceColor.needsUpdate = true;
+}
+function updateDebris(dt){
+  for(let i=0;i<DEBRIS_N;i++){
+    const d = debrisData[i];
+    if(d.life<=0){ dummy.position.set(0,-999,0); dummy.scale.setScalar(.001); }
+    else{
+      d.life-=dt;
+      d.x+=d.vx*dt; d.y+=d.vy*dt; d.z+=d.vz*dt;
+      d.vy-=22*dt;
+      dummy.position.set(d.x,d.y,d.z);
+      dummy.rotation.set(d.rx+=dt*8, d.ry+=dt*6, 0);
+      dummy.scale.setScalar(d.s*clamp(d.life*2.2,0,1));
+    }
+    dummy.updateMatrix();
+    debris.setMatrixAt(i, dummy.matrix);
+  }
+  debris.instanceMatrix.needsUpdate = true;
+}
+
+/* ============================================================
+   게임 상태
+============================================================ */
+const G = {
+  mode:'title',           // title | run | over
+  count:10,
+  distance:0,
+  wavesCleared:0,
+  wavesSpawned:0,
+  slotIndex:0,
+  nextSpawnDist:0,
+  speed:13,
+  diff:0,
+  targetX:0, flockX:0,
+  clash:null,             // { wave, acc, boss }
+  slowmoT:0, timeScale:1,
+  shake:0,
+  fovKick:0,
+  best: parseInt(localStorage.getItem(BEST_KEY)||'0',10) || 0,
+  overCause:'',
+  debugSlowClash: SCENARIO==='clash' || SCENARIO==='boss',
+};
+
+function score(){ return Math.floor(G.distance) + G.wavesCleared*100; }
+
+/* ============================================================
+   UI 요소
+============================================================ */
+const el = {
+  hud:document.getElementById('hud'),
+  score:document.getElementById('score'),
+  subScore:document.getElementById('subScore'),
+  best:document.getElementById('best'),
+  flockLabel:document.getElementById('flockLabel'),
+  title:document.getElementById('title'),
+  over:document.getElementById('over'),
+  overScore:document.getElementById('overScore'),
+  overBest:document.getElementById('overBest'),
+  overCause:document.getElementById('overCause'),
+  newBest:document.getElementById('newBest'),
+  retry:document.getElementById('retry'),
+  mute:document.getElementById('mute'),
+  hint:document.getElementById('hint'),
+  opToast:document.getElementById('opToast'),
+  flash:document.getElementById('flash'),
+};
+el.best.textContent = '최고 ' + fmt(G.best);
+el.mute.textContent = SFX.muted ? '🔇' : '🔊';
+
+let popTimer = 0;
+function popFlockLabel(good){
+  el.flockLabel.classList.remove('pop','pop-bad');
+  void el.flockLabel.offsetWidth;
+  el.flockLabel.classList.add(good?'pop':'pop-bad');
+  clearTimeout(popTimer);
+  popTimer = setTimeout(()=>el.flockLabel.classList.remove('pop','pop-bad'), 160);
+}
+function showOpToast(text, good){
+  el.opToast.textContent = text;
+  el.opToast.style.color = good ? '#7df3ff' : '#ff8896';
+  el.opToast.classList.remove('play');
+  void el.opToast.offsetWidth;
+  el.opToast.classList.add('play');
+}
+
+/* ============================================================
+   스폰 슬롯 (게이트/웨이브 패턴)
+============================================================ */
+const SPAWN_Z = -165;
+function slotGap(){ return clamp(34 - G.distance*0.004, 25, 34); }
+function spawnSlot(z){
+  const idx = G.slotIndex++;
+  const mod = idx % 5;
+  if(mod===2 || mod===4){
+    const boss = (G.wavesSpawned % 4)===3;
+    spawnWave(z, { boss });
+    G.wavesSpawned++;
+  }else{
+    spawnGate(z, idx<2); // 첫 두 관문은 반드시 좋은 선택지 포함
+  }
+}
+
+/* ============================================================
+   시작 / 리셋 / 게임오버
+============================================================ */
+function resetRun(){
+  G.count = 10; G.distance = 0; G.wavesCleared = 0; G.wavesSpawned = 0;
+  G.slotIndex = 0; G.speed = 13; G.diff = 0;
+  G.targetX = 0; G.flockX = 0;
+  G.clash = null; G.slowmoT = 0; G.timeScale = 1; G.shake = 0;
+  for(const g of gatePool){ g.active=false; g.grp.visible=false; }
+  for(const w of wavePool){ if(w.active) despawnWave(w); }
+  for(let i=0;i<puff.n;i++){ puff.life[i]=0; puff.pos.array[i*3+1]=-999; }
+  for(let i=0;i<confetti.n;i++){ confetti.life[i]=0; confetti.pos.array[i*3+1]=-999; }
+  puff.pos.needsUpdate = confetti.pos.needsUpdate = true;
+  for(const d of debrisData) d.life=0;
+  // 초기 슬롯 미리 채우기
+  if(SCENARIO==='clash'){
+    G.count = 120;
+    spawnWave(-34, { count:420, type:0 });
+    spawnGate(-90, true);
+  }else if(SCENARIO==='boss'){
+    G.count = 150;
+    spawnWave(-40, { boss:true, count:600, type:2 });
+  }else if(SCENARIO==='gameover'){
+    G.count = 3;
+    spawnWave(-26, { count:500, type:1 });
+  }else if(SCENARIO==='gates'){
+    spawnGate(-30, true); spawnGate(-62); spawnGate(-94);
+  }else{
+    spawnSlot(-45); spawnSlot(-77); spawnSlot(-109); spawnSlot(-141);
+  }
+  G.nextSpawnDist = G.distance + slotGap()*0.8;
+}
+function startGame(){
+  SFX.ensure();
+  resetRun();
+  G.mode = 'run';
+  el.title.style.display = 'none';
+  el.over.classList.remove('show');
+  el.hud.classList.add('show');
+  el.hint.classList.add('show');
+  setTimeout(()=>el.hint.classList.remove('show'), 3500);
+}
+function gameOver(cause){
+  if(G.mode!=='run') return;
+  G.mode = 'over';
+  G.overCause = cause;
+  G.count = Math.max(0, G.count);
+  SFX.defeat();
+  G.shake = 1;
+  const s = score();
+  const isNew = s > G.best;
+  if(isNew){ G.best = s; localStorage.setItem(BEST_KEY, String(s)); }
+  el.overScore.textContent = fmt(s);
+  el.overBest.textContent = fmt(G.best);
+  el.overCause.textContent = cause;
+  el.newBest.classList.toggle('show', isNew);
+  el.best.textContent = '최고 ' + fmt(G.best);
+  overShownAt = performance.now();
+  setTimeout(()=>el.over.classList.add('show'), 550);
+}
+
+/* ============================================================
+   입력
+============================================================ */
+let dragging = false, lastPX = 0, overShownAt = 0;
+const keys = {};
+function tryStart(){
+  if(G.mode==='title'){ startGame(); return true; }
+  if(G.mode==='over' && performance.now()-overShownAt > 600){ startGame(); return true; }
+  return false;
+}
+window.addEventListener('pointerdown', e=>{
+  if(e.target===el.mute || e.target===el.retry) return;
+  SFX.ensure();
+  if(G.mode==='title'){ startGame(); return; }
+  dragging = true; lastPX = e.clientX;
+});
+window.addEventListener('pointermove', e=>{
+  if(!dragging || G.mode!=='run') return;
+  const dx = e.clientX - lastPX; lastPX = e.clientX;
+  G.targetX = clamp(G.targetX + dx * 9 / window.innerWidth * 1.9, -3.4, 3.4);
+});
+window.addEventListener('pointerup', ()=>{ dragging=false; });
+window.addEventListener('pointercancel', ()=>{ dragging=false; });
+window.addEventListener('keydown', e=>{
+  keys[e.code] = true;
+  if(e.code==='Space' || e.code==='Enter'){ SFX.ensure(); tryStart(); }
+});
+window.addEventListener('keyup', e=>{ keys[e.code]=false; });
+el.retry.addEventListener('click', ()=>{ SFX.ensure(); startGame(); });
+el.mute.addEventListener('click', ()=>{
+  SFX.ensure();
+  SFX.setMuted(!SFX.muted);
+  el.mute.textContent = SFX.muted ? '🔇' : '🔊';
+});
+
+/* ============================================================
+   클래시(전투) 로직
+============================================================ */
+let tickSfxAcc = 0;
+function startClash(wave){
+  G.clash = { wave, acc:0 };
+  G.slowmoT = 0.3;
+  G.shake = Math.min(1, 0.45 + wave.count*0.001);
+  SFX.clash();
+  el.flash.style.transition = 'none';
+  el.flash.style.opacity = '1';
+  requestAnimationFrame(()=>{
+    el.flash.style.transition = 'opacity .6s';
+    el.flash.style.opacity = '0';
+  });
+  const et = ENEMY_TYPES[wave.type];
+  spawnPuff(wave.x, 1, wave.z, 26, 1,1,1);
+  spawnDebris(0, 1, -1, 0xff85b3, 4);
+  spawnDebris(wave.x, 1, wave.z, et.color, 4);
+}
+function updateClash(dt){
+  const c = G.clash, w = c.wave;
+  // 1:1 소멸 틱
+  const rate = Math.max(26, Math.min(G.count, w.count) * 1.5);
+  c.acc += rate * dt;
+  let kills = Math.floor(c.acc);
+  if(kills>0){
+    c.acc -= kills;
+    kills = Math.min(kills, w.count, G.count);
+    w.count -= kills; G.count -= kills;
+    const et = ENEMY_TYPES[w.type];
+    spawnPuff(rand(-1,1)*1.2 + w.x*0.4, 1, rand(-2.5,0.5), Math.min(kills,5)+2, 1,.85,.9);
+    if(Math.random()<0.6) spawnDebris(rand(-1.5,1.5), .8, rand(-2,0), Math.random()<.5 ? 0xff85b3 : et.color, Math.min(kills,3));
+    tickSfxAcc += kills;
+    if(tickSfxAcc >= 4){ tickSfxAcc = 0; SFX.tick(); }
+    G.shake = Math.max(G.shake, 0.25);
+  }
+  if(G.count <= 0){
+    despawnWave(w); G.clash = null;
+    gameOver(w.boss ? ENEMY_TYPES[w.type].kr+' 보스에게 당했습니다…' : ENEMY_TYPES[w.type].kr+' 무리에 막혔습니다…');
+    return;
+  }
+  if(w.count <= 0){
+    // 승리!
+    const wasBoss = w.boss, bx=w.x, bz=w.z, btype=w.type;
+    despawnWave(w); G.clash = null;
+    G.wavesCleared++;
+    if(wasBoss){
+      spawnConfetti(bx, 2.5, bz, 200);
+      SFX.confetti();
+      G.shake = Math.max(G.shake, 0.7);
+    }else{
+      spawnPuff(bx, 1.4, bz, 20, 1,.95,.7);
+      SFX.win();
+    }
+  }
+}
+
+/* ============================================================
+   메인 루프
+============================================================ */
+const camLook = new THREE.Vector3();
+let elapsed = 0;
+
+function simulate(dt){
+  elapsed += dt;
+  // 슬로모
+  if(G.slowmoT > 0){
+    G.slowmoT -= dt;
+    G.timeScale = G.debugSlowClash && G.clash ? 0.06 : 0.25;
+  }else if(G.debugSlowClash && G.clash){
+    G.timeScale = 0.06;
+  }else{
+    G.timeScale = lerp(G.timeScale, 1, Math.min(1, dt*6));
+  }
+  const ts = G.timeScale;
+  const sdt = dt * ts;
+
+  if(G.mode==='run'){
+    // 키보드 조향
+    let kd = 0;
+    if(keys['ArrowLeft']||keys['KeyA']) kd -= 1;
+    if(keys['ArrowRight']||keys['KeyD']) kd += 1;
+    if(kd) G.targetX = clamp(G.targetX + kd * 8.5 * dt, -3.4, 3.4);
+    // 디버그 봇: 더 나은 관문 쪽으로 자동 조향
+    if(BOT && !G.clash){
+      let nearest = null;
+      for(const g of gatePool){
+        if(!g.active || g.passed) continue;
+        if(!nearest || g.grp.position.z > nearest.grp.position.z) nearest = g;
+      }
+      if(nearest){
+        const v0 = opValue(nearest.panels[0].op, G.count);
+        const v1 = opValue(nearest.panels[1].op, G.count);
+        G.targetX = v0 >= v1 ? -GATE_X : GATE_X;
+      }
+    }
+    G.flockX = lerp(G.flockX, G.targetX, Math.min(1, dt*9));
+
+    // 난이도 · 속도
+    G.diff = G.distance / 380;
+    G.speed = Math.min(30, 13 + G.distance * 0.02);
+    const worldSpeed = G.clash ? 0 : G.speed;
+    const move = worldSpeed * sdt;
+    G.distance += move;
+
+    // 스폰
+    if(G.distance >= G.nextSpawnDist){
+      spawnSlot(SPAWN_Z);
+      G.nextSpawnDist += slotGap();
+    }
+
+    // ---- 게이트 이동/판정
+    for(const g of gatePool){
+      if(!g.active) continue;
+      g.prevZ = g.grp.position.z;
+      g.grp.position.z += move;
+      const z = g.grp.position.z;
+      if(!g.passed && g.prevZ < 0 && z >= 0){
+        g.passed = true;
+        const side = G.flockX < 0 ? 0 : 1;
+        const p = g.panels[side];
+        const before = G.count;
+        G.count = applyOp(p.op, G.count);
+        const good = G.count >= before;
+        const ratio = before>0 ? G.count/Math.max(1,before) : 1;
+        p.flash = 0.35;
+        popFlockLabel(good);
+        showOpToast(opLabel(p.op), good);
+        SFX.gate(good, ratio);
+        spawnPuff(G.flockX, 1.5, 0, 14, good?0.55:1, good?0.85:0.5, good?1:0.55);
+        if(G.count <= 0){ gameOver('관문에서 군단이 전멸했습니다…'); }
+      }
+      for(const p of g.panels){
+        if(p.flash>0){
+          p.flash -= dt;
+          const k = 1 + Math.max(0,p.flash)*0.7;
+          p.sub.scale.setScalar(k);
+          p.glow.material.opacity = 0.75 + Math.max(0,p.flash)*0.8;
+        }
+      }
+      if(z > 10){ g.active=false; g.grp.visible=false; }
+    }
+
+    // ---- 웨이브 이동/접촉
+    for(const w of wavePool){
+      if(!w.active) continue;
+      if(!G.clash){
+        w.z += move + (w.boss?0:2.2) * sdt;   // 일반 무리는 살짝 전진해 옴
+      }
+      if(w.boss && !w.hornPlayed && w.z > -110){ w.hornPlayed = true; SFX.horn(); }
+      if(!G.clash && w.z >= -1.6){
+        w.z = -1.6;
+        startClash(w);
+      }
+    }
+    if(G.clash) updateClash(sdt); // 클래시 틱도 슬로모의 영향을 받아 타격감 있게
+    // ---- 월드 드레싱 스크롤
+    for(const d of dashes){ d.position.z += move; if(d.position.z > 8) d.position.z -= 338; }
+    for(const m of palms){ m.position.z += move*0.998; if(m.position.z > 14) m.position.z -= 270; }
+    for(const m of islands){ m.position.z += move*0.55; if(m.position.z > 30) m.position.z -= 300; }
+    for(const m of clouds){ m.position.z += move*0.22 + dt*0.4; if(m.position.z > 20) m.position.z -= 280; }
+  }
+
+  // 파티클 (항상)
+  updatePoints(puff, dt, 3);
+  updatePoints(confetti, dt, 9);
+  updateDebris(dt);
+
+  // 셰이크 감쇠
+  G.shake = Math.max(0, G.shake - dt*1.6);
+}
+
+function renderFrame(){
+  const t = elapsed;
+  const inClash = !!G.clash;
+
+  // ---- 군단 렌더
+  const visible = Math.min(G.count, FLOCK_CAP);
+  const spread = clamp(Math.sqrt(Math.max(visible,1)/46), 0.72, 1.5);
+  const jitterMul = inClash ? 2.2 : 1;
+  for(let i=0;i<visible;i++){
+    const o = flockOffsets[i];
+    const bob = Math.abs(Math.sin(t*o.speed + o.phase));
+    dummy.position.set(
+      clamp(G.flockX + o.x*spread + Math.sin(t*3+o.phase)*0.05*jitterMul, -4.15, 4.15),
+      bob*0.14,
+      o.z*spread + (inClash ? Math.sin(t*14+o.phase)*0.1 : 0)
+    );
+    dummy.rotation.set(0, Math.sin(t*2+o.phase)*0.12, Math.sin(t*o.speed+o.phase)*0.06);
+    dummy.scale.setScalar(1);
+    dummy.updateMatrix();
+    flock.setMatrixAt(i, dummy.matrix);
+  }
+  if(visible < FLOCK_CAP){
+    dummy.position.set(0,-999,0); dummy.scale.setScalar(0.001); dummy.updateMatrix();
+    for(let i=visible;i<FLOCK_CAP;i++) flock.setMatrixAt(i, dummy.matrix);
+  }
+  flock.count = FLOCK_CAP;
+  flock.instanceMatrix.needsUpdate = true;
+  // 리더
+  const lb = Math.abs(Math.sin(t*9));
+  leader.position.set(G.flockX, lb*0.16, -0.9*spread - 0.35);
+  leader.rotation.z = Math.sin(t*9)*0.05;
+  leader.visible = G.count > 0;
+  flock.visible = G.count > 1;
+
+  // ---- 웨이브 렌더
+  for(const w of wavePool){
+    if(!w.active) continue;
+    if(w.boss){
+      const bm = bossMeshes[w.type];
+      const hitPulse = inClash && G.clash.wave===w ? Math.sin(t*30)*0.08 : 0;
+      bm.position.set(w.x, Math.abs(Math.sin(t*4))*0.3, w.z);
+      bm.scale.setScalar(6.2*(1 + hitPulse) * clamp(w.count/w.startCount*0.4+0.6, 0.55, 1));
+      bm.rotation.y = Math.sin(t*1.5)*0.12;
+      if(w.label){
+        w.label.el.textContent = fmt(w.count);
+        placeLabel(w.label.el, w.x, 5.6, w.z);
+      }
+    }else{
+      const m = w.meshes[w.type];
+      const vis = Math.min(w.count, WAVE_CAP);
+      const wspread = clamp(Math.sqrt(Math.max(vis,1)/40), 0.7, 1.6);
+      for(let i=0;i<vis;i++){
+        const o = w.offsets[i];
+        const bob = Math.abs(Math.sin(t*7+o.phase));
+        dummy.position.set(
+          clamp(w.x + o.x*wspread, -4.15, 4.15),
+          bob*0.1,
+          w.z + o.z*wspread*1.15 - 1.2
+        );
+        dummy.rotation.set(0, Math.sin(t*2.4+o.phase)*0.15, 0);
+        dummy.scale.setScalar(1.02);
+        dummy.updateMatrix();
+        m.setMatrixAt(i, dummy.matrix);
+      }
+      if(vis < WAVE_CAP){
+        dummy.position.set(0,-999,0); dummy.scale.setScalar(0.001); dummy.updateMatrix();
+        for(let i=vis;i<WAVE_CAP;i++) m.setMatrixAt(i, dummy.matrix);
+      }
+      m.instanceMatrix.needsUpdate = true;
+      if(w.label){
+        w.label.el.textContent = fmt(w.count);
+        placeLabel(w.label.el, w.x, 2.6 + wspread*0.6, w.z);
+      }
+    }
+  }
+
+  // ---- 카메라
+  const targetFov = BASE_FOV + (G.speed-13)*0.55 + (inClash?4:0);
+  camera.fov = lerp(camera.fov, targetFov, 0.06);
+  camera.updateProjectionMatrix();
+  const shx = (Math.random()-0.5)*G.shake*0.55;
+  const shy = (Math.random()-0.5)*G.shake*0.4;
+  camera.position.set(G.flockX*0.55 + shx, 6.8 + shy, 10.4);
+  camLook.set(G.flockX*0.75, 1.1 + shy*0.5, -7);
+  camera.lookAt(camLook);
+
+  // ---- HUD / 라벨
+  if(G.mode!=='title'){
+    el.score.textContent = fmt(score());
+    el.subScore.textContent = '거리 ' + Math.floor(G.distance) + 'm · 웨이브 ' + G.wavesCleared;
+    el.flockLabel.textContent = fmt(Math.max(0,G.count));
+    placeLabel(el.flockLabel, G.flockX, 2.15, 0.4);
+    const toastEl = el.opToast;
+    if(toastEl.classList.contains('play')){
+      projV.set(G.flockX, 2.6, 0).project(camera);
+      toastEl.style.left = ((projV.x*0.5+0.5)*window.innerWidth)+'px';
+      toastEl.style.top = ((-projV.y*0.5+0.5)*window.innerHeight)+'px';
+    }
+  }else{
+    el.flockLabel.style.display='none';
+  }
+
+  renderer.render(scene, camera);
+}
+
+let lastT = performance.now();
+function loop(now){
+  requestAnimationFrame(loop);
+  let dt = (now - lastT)/1000;
+  lastT = now;
+  dt = clamp(dt, 0, 0.05);
+  if(!FREEZE) simulate(dt);
+  renderFrame();
+}
+requestAnimationFrame(loop);
+
+/* ============================================================
+   타이틀 화면 초기 상태
+============================================================ */
+if(AUTOSTART){
+  startGame();
+  if(SIMSEC > 0){ // 스크린샷/테스트용: N초를 즉시 시뮬레이션
+    const steps = Math.round(SIMSEC*60);
+    for(let i=0;i<steps;i++) simulate(1/60);
+  }
+}else{
+  // 타이틀 뒤 배경: 군단 대기 (약간의 유휴 흔들림은 renderFrame에서 처리)
+  G.count = 10;
+}
+
+/* ============================================================
+   디버그 훅
+============================================================ */
+window.__game = {
+  THREE, scene, camera, renderer,
+  get state(){
+    return { mode:G.mode, count:G.count, distance:Math.floor(G.distance),
+      speed:+G.speed.toFixed(1), waves:G.wavesCleared, score:score(),
+      clash:!!G.clash, best:G.best };
+  },
+  start: startGame,
+  step(dt=1/60){ simulate(dt); renderFrame(); },
+  setCount(n){ G.count = n; },
+  spawnWave(count, z=-40, boss=false, type=0){ return spawnWave(z, {count, boss, type}); },
+  spawnGate(z=-40){ spawnGate(z); },
+  gameOver: ()=>gameOver('디버그 종료'),
+};
+console.log('[flamingo] ready');
+</script>
+</body>
+</html>

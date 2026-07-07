@@ -1,0 +1,2156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>플라밍고 여제: 홍학천하</title>
+<meta name="description" content="몰락 귀족에서 천하통일까지 — 홍학 여제의 궁정 생존 시뮬레이션">
+<style>
+/* ============================================================
+   플라밍고 여제: 홍학천하 — luxurious sageuk mobile aesthetic
+   ============================================================ */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --crimson:#8e2437; --crimson-l:#b03a4e; --crimson-d:#5a1220;
+  --plum:#3b1026; --plum-d:#22091a; --night:#160512;
+  --gold:#d9a441; --gold-l:#f4d58d; --gold-d:#8a5d1d; --gold-dd:#5c3c10;
+  --ivory:#f7ecd6; --ivory-2:#efdfc0; --ivory-3:#e5d0a8; --paper:#faf3e3;
+  --ink:#2b1a12; --ink-soft:#5a4232;
+  --pink:#f08aa6; --pink-l:#ffc2d1; --pink-d:#c95c7f; --silk:#ff9db4;
+  --good:#2e7d4f; --bad:#b3362b;
+  --serif:'Noto Serif KR','Nanum Myeongjo','AppleMyungjo','Songti SC','Batang',serif;
+  --num:'Avenir Next','Noto Serif KR',sans-serif;
+}
+html,body{height:100%}
+body{
+  font-family:var(--serif); color:var(--ink); background:var(--night);
+  overflow-x:hidden; -webkit-font-smoothing:antialiased; user-select:none;
+}
+button{font-family:var(--serif); cursor:pointer; border:none; background:none; color:inherit}
+button:disabled{cursor:not-allowed}
+
+/* ---------- backdrop (desktop letterbox) ---------- */
+#backdrop{position:fixed; inset:0; z-index:0;
+  background:
+    radial-gradient(130% 90% at 50% -12%, #6b1b38 0%, #43122b 42%, #200818 78%, #12040e 100%);
+}
+#backdrop::before{ /* palace silhouettes on the letterbox sides */
+  content:''; position:absolute; left:0; right:0; bottom:0; height:40vh; opacity:.6;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='680' height='240' viewBox='0 0 680 240'%3E%3Cg fill='%23120310'%3E%3Cpath d='M0 240 V190 H60 V178 H72 V190 H130 V178 H142 V190 H208 V240 Z'/%3E%3Cpath d='M472 240 V190 H538 V178 H550 V190 H608 V178 H620 V190 H680 V240 Z'/%3E%3Cpath d='M208 240 V150 L188 150 L228 122 H452 L492 150 L472 150 V240 Z'/%3E%3Cpath d='M256 122 V96 L238 96 L272 72 H408 L442 96 L424 96 V122 Z'/%3E%3Cpath d='M292 72 V52 L280 52 L318 30 H362 L400 52 L388 52 V72 Z'/%3E%3Cpath d='M334 30 V14 L340 4 L346 14 V30 Z'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='680' height='240' viewBox='0 0 680 240'%3E%3Cg fill='%23120310'%3E%3Cpath d='M0 240 V190 H60 V178 H72 V190 H130 V178 H142 V190 H208 V240 Z'/%3E%3Cpath d='M472 240 V190 H538 V178 H550 V190 H608 V178 H620 V190 H680 V240 Z'/%3E%3Cpath d='M208 240 V150 L188 150 L228 122 H452 L492 150 L472 150 V240 Z'/%3E%3Cpath d='M256 122 V96 L238 96 L272 72 H408 L442 96 L424 96 V122 Z'/%3E%3Cpath d='M292 72 V52 L280 52 L318 30 H362 L400 52 L388 52 V72 Z'/%3E%3Cpath d='M334 30 V14 L340 4 L346 14 V30 Z'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat:no-repeat, no-repeat;
+  background-position:left -40px bottom 0, right -40px bottom 0;
+  background-size:min(40vw,540px) auto, min(40vw,540px) auto;
+  filter:drop-shadow(0 -6px 24px rgba(255,170,120,.10));
+}
+@media (max-width:560px){ #backdrop::before{ background-position:center bottom, center bottom; background-size:min(90vw,680px) auto, 0 0; } }
+#backdrop::after{ /* stars + moon */
+  content:''; position:absolute; inset:0;
+  background:
+    radial-gradient(circle 46px at 78% 14%, rgba(255,224,178,.95) 0 38px, rgba(255,224,178,.15) 40px, transparent 46px),
+    radial-gradient(1.5px 1.5px at 12% 22%, rgba(255,240,220,.8) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 24% 9%, rgba(255,240,220,.6) 50%, transparent 51%),
+    radial-gradient(2px 2px at 38% 18%, rgba(255,240,220,.7) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 55% 7%, rgba(255,240,220,.65) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 66% 24%, rgba(255,240,220,.5) 50%, transparent 51%),
+    radial-gradient(2px 2px at 90% 30%, rgba(255,240,220,.6) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 8% 44%, rgba(255,240,220,.4) 50%, transparent 51%);
+}
+
+/* ---------- app column ---------- */
+#app{position:relative; z-index:1; width:min(480px,100vw); margin:0 auto; min-height:100dvh;
+  background:
+    linear-gradient(rgba(120,70,20,.045) 1px, transparent 1px) 0 0/100% 3px,
+    linear-gradient(160deg, var(--paper) 0%, var(--ivory) 55%, #f2e4c6 100%);
+  box-shadow:0 0 0 1px var(--gold-dd), 0 0 0 3px rgba(217,164,65,.55), 0 0 60px rgba(0,0,0,.7);
+  display:flex; flex-direction:column;
+}
+
+/* ---------- ornate panel ---------- */
+.panel{position:relative; background:linear-gradient(175deg,var(--paper),var(--ivory-2));
+  border:2px solid var(--gold-d); border-radius:10px; padding:14px 14px;
+  box-shadow:inset 0 0 0 1px rgba(255,245,215,.8), inset 0 0 24px rgba(150,100,30,.08), 0 3px 8px rgba(40,10,20,.18);
+}
+.panel::before{content:''; position:absolute; inset:4px; border:1px solid rgba(138,93,29,.5); border-radius:7px; pointer-events:none}
+.panel::after{content:''; position:absolute; inset:0; pointer-events:none; border-radius:10px;
+  background:
+    radial-gradient(circle 3px at 9px 9px, var(--gold) 2.4px, transparent 3px),
+    radial-gradient(circle 3px at calc(100% - 9px) 9px, var(--gold) 2.4px, transparent 3px),
+    radial-gradient(circle 3px at 9px calc(100% - 9px), var(--gold) 2.4px, transparent 3px),
+    radial-gradient(circle 3px at calc(100% - 9px) calc(100% - 9px), var(--gold) 2.4px, transparent 3px);
+}
+.panel h3{font-size:14px; letter-spacing:.18em; color:var(--crimson-d); margin-bottom:8px;
+  display:flex; align-items:center; gap:8px}
+.panel h3::after{content:''; flex:1; height:6px;
+  background:radial-gradient(circle 5px at 5px -1px, transparent 4px, rgba(138,93,29,.55) 4.5px, transparent 6px) repeat-x;
+  background-size:10px 6px}
+
+/* ---------- buttons ---------- */
+.btn{position:relative; display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  padding:10px 18px; border-radius:9px; font-size:15px; font-weight:700; letter-spacing:.06em;
+  color:var(--ivory); text-shadow:0 1px 2px rgba(40,0,10,.5);
+  background:linear-gradient(180deg,var(--crimson-l) 0%,var(--crimson) 45%,var(--crimson-d) 100%);
+  border:1.5px solid var(--gold-d);
+  box-shadow:inset 0 1px 0 rgba(255,230,200,.35), inset 0 -6px 10px rgba(40,0,15,.35), 0 3px 6px rgba(30,5,15,.35);
+  transition:transform .08s, filter .15s;
+}
+.btn:active{transform:translateY(2px) scale(.985); filter:brightness(.92)}
+.btn.gold{color:#3d2705; text-shadow:0 1px 0 rgba(255,240,200,.6);
+  background:linear-gradient(180deg,#ffe9ac 0%,var(--gold) 45%,#b5822a 100%); border-color:#7c5514}
+.btn.pink{background:linear-gradient(180deg,var(--pink-l),var(--pink) 50%,var(--pink-d)); color:#5c1226; text-shadow:0 1px 0 rgba(255,235,240,.55)}
+.btn.big{padding:14px 22px; font-size:17px; border-radius:12px}
+.btn.small{padding:6px 11px; font-size:12.5px; border-radius:7px}
+.btn.wfull{width:100%}
+.btn:disabled{filter:grayscale(.75) brightness(.75); opacity:.75}
+.btn .sub{font-size:11px; font-weight:400; opacity:.9}
+
+/* ---------- top resource bar ---------- */
+#topbar{position:sticky; top:0; z-index:30; display:flex; align-items:stretch; gap:5px;
+  padding:8px 8px 7px; padding-top:calc(8px + env(safe-area-inset-top));
+  background:linear-gradient(180deg,#170512 0%,var(--plum) 60%,#2c0b1e 100%);
+  border-bottom:2px solid var(--gold-d);
+  box-shadow:0 1px 0 rgba(244,213,141,.5), 0 4px 12px rgba(20,2,12,.5);
+}
+#topbar::after{content:''; position:absolute; left:0; right:0; bottom:-6px; height:6px; pointer-events:none;
+  background:radial-gradient(circle 5px at 5px -1px, rgba(217,164,65,.9) 3.4px, transparent 5px) repeat-x; background-size:11px 6px}
+.res{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+  padding:4px 2px 3px; border-radius:8px; position:relative;
+  background:linear-gradient(180deg,rgba(255,235,200,.1),rgba(255,235,200,.02));
+  border:1px solid rgba(217,164,65,.45);
+}
+.res .ico{font-size:14px; line-height:1; filter:drop-shadow(0 1px 1px rgba(0,0,0,.6))}
+.res .v{font-family:var(--num); font-weight:800; font-size:13.5px; color:var(--gold-l); line-height:1.1;
+  font-variant-numeric:tabular-nums; text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.res.low .v{color:#ff8d7e; animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+#btn-mute{align-self:center; font-size:16px; padding:6px 8px; border-radius:8px;
+  border:1px solid rgba(217,164,65,.45); background:rgba(255,235,200,.07); line-height:1}
+
+/* ---------- rank strip ---------- */
+#rankstrip{display:flex; align-items:center; gap:8px; padding:7px 12px 6px;
+  background:linear-gradient(180deg,#f3e3c2,#ead7ae);
+  border-bottom:1.5px solid var(--gold-d); box-shadow:0 2px 6px rgba(80,40,10,.15); position:relative; z-index:5}
+#rank-badge{font-weight:800; font-size:13.5px; color:var(--crimson-d); letter-spacing:.04em; white-space:nowrap}
+#prestige-wrap{flex:1; min-width:0}
+#prestige-bar{height:9px; border-radius:6px; border:1px solid var(--gold-dd); overflow:hidden;
+  background:linear-gradient(180deg,#cdb488,#dbc79e); box-shadow:inset 0 1px 3px rgba(60,30,5,.4)}
+#prestige-fill{height:100%; width:0%;
+  background:linear-gradient(90deg,#e8b64c,var(--gold-l) 55%,#ffefbe);
+  box-shadow:0 0 6px rgba(244,213,141,.9); transition:width .5s cubic-bezier(.3,1.2,.4,1)}
+#prestige-label{font-size:10px; color:var(--ink-soft); text-align:right; margin-top:2px; letter-spacing:.05em}
+#day-badge{font-size:12px; font-weight:700; color:var(--ink-soft); white-space:nowrap;
+  background:rgba(255,248,230,.7); border:1px solid rgba(138,93,29,.5); border-radius:6px; padding:2px 7px}
+
+/* ---------- views ---------- */
+#views{flex:1; overflow-y:auto; padding:12px 12px 90px; scrollbar-width:none}
+#views::-webkit-scrollbar{display:none}
+.view{display:none; flex-direction:column; gap:12px}
+.view.active{display:flex; animation:viewIn .32s cubic-bezier(.2,.9,.3,1)}
+@keyframes viewIn{from{opacity:0; transform:translateY(14px)}to{opacity:1; transform:none}}
+
+/* ---------- bottom tab bar ---------- */
+#tabbar{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:min(480px,100vw); z-index:40;
+  display:flex; padding:6px 8px calc(7px + env(safe-area-inset-bottom));
+  background:linear-gradient(180deg,#33102394,#1d0714f2 30%,#14040e); backdrop-filter:blur(6px);
+  border-top:2px solid var(--gold-d); box-shadow:0 -1px 0 rgba(244,213,141,.4), 0 -6px 18px rgba(10,0,8,.55)}
+.tab{flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 2px 4px;
+  border-radius:10px; color:#c9a77e; font-size:11.5px; font-weight:700; letter-spacing:.1em;
+  transition:color .2s, background .2s, transform .15s}
+.tab .t-ico{font-size:21px; line-height:1; filter:grayscale(.5) brightness(.8); transition:filter .2s, transform .2s}
+.tab.active{color:var(--gold-l);
+  background:linear-gradient(180deg,rgba(244,213,141,.16),rgba(244,213,141,.03));
+  box-shadow:inset 0 0 0 1px rgba(217,164,65,.5), 0 0 14px rgba(217,164,65,.15)}
+.tab.active .t-ico{filter:none; transform:translateY(-2px) scale(1.12)}
+.tab .t-dot{position:absolute; display:none}
+.tab.noti{position:relative}
+.tab.noti::after{content:''; position:absolute; top:4px; right:18%; width:8px; height:8px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffd3dd,#ef4b6e); box-shadow:0 0 6px #ef4b6e}
+
+/* ---------- court view ---------- */
+.court-head{display:flex; gap:12px; align-items:center}
+.court-scene{flex:0 0 64px; height:64px; display:flex; align-items:center; justify-content:center; font-size:34px;
+  border-radius:12px; background:radial-gradient(circle at 50% 35%,#6b1b38,#2c0b1e 80%);
+  border:2px solid var(--gold-d); box-shadow:inset 0 0 12px rgba(0,0,0,.5)}
+#court-flavor{font-size:14px; line-height:1.65; color:var(--ink); font-style:normal}
+#court-flavor b{color:var(--crimson)}
+#btn-day{font-size:18px; letter-spacing:.15em; padding:16px}
+#btn-day .moon{font-size:20px}
+.report-line{display:flex; justify-content:space-between; font-size:13px; padding:3px 2px; color:var(--ink-soft)}
+.report-line b{color:var(--ink); font-variant-numeric:tabular-nums}
+.report-line .plus{color:var(--good); font-weight:800}
+.report-line .minus{color:var(--bad); font-weight:800}
+#log{list-style:none; max-height:190px; overflow-y:auto; scrollbar-width:thin}
+#log li{font-size:12.5px; line-height:1.55; padding:6px 2px; color:var(--ink-soft);
+  border-bottom:1px dashed rgba(138,93,29,.35)}
+#log li:first-child{color:var(--ink)}
+#log li .d{color:var(--gold-d); font-weight:800; margin-right:6px; font-size:11px}
+
+/* ---------- minister cards ---------- */
+.mcard{display:flex; gap:11px; align-items:center}
+.mport{flex:0 0 58px; height:58px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+  font-size:32px; background:radial-gradient(circle at 50% 30%,#5d1832,#2a0a1d 85%);
+  border:2px solid var(--gold-d); box-shadow:inset 0 0 0 2px rgba(244,213,141,.25), inset 0 -8px 12px rgba(0,0,0,.4), 0 2px 5px rgba(40,10,20,.3);
+  position:relative}
+.mport.locked{filter:grayscale(1) brightness(.6)}
+.mport .lv{position:absolute; bottom:-7px; left:50%; transform:translateX(-50%); font-size:9.5px; font-weight:800;
+  color:#3d2705; background:linear-gradient(180deg,#ffe9ac,var(--gold)); border:1px solid #7c5514; border-radius:6px;
+  padding:1px 6px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.minfo{flex:1; min-width:0}
+.minfo .mname{font-size:14.5px; font-weight:800; color:var(--crimson-d)}
+.minfo .mname .stars{color:var(--gold-d); font-size:11px; letter-spacing:.08em; margin-left:4px}
+.minfo .mrole{font-size:11.5px; color:var(--ink-soft); margin:2px 0 4px; line-height:1.4}
+.loyal{display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--ink-soft)}
+.loyal .bar{flex:1; height:7px; border-radius:5px; overflow:hidden; border:1px solid rgba(138,93,29,.5);
+  background:#dcc79e; box-shadow:inset 0 1px 2px rgba(60,30,5,.35)}
+.loyal .fill{height:100%; background:linear-gradient(90deg,var(--pink-d),var(--pink),var(--pink-l)); transition:width .4s}
+.loyal .fill.danger{background:linear-gradient(90deg,#8c1f1f,#d84b3a)}
+.loyal .lnum{font-variant-numeric:tabular-nums; font-weight:800; min-width:26px; text-align:right}
+.mbtns{display:flex; flex-direction:column; gap:5px}
+.warn-tag{display:inline-block; font-size:10px; font-weight:800; color:#fff; background:linear-gradient(180deg,#d84b3a,#a12417);
+  border-radius:5px; padding:1px 6px; margin-left:5px; animation:pulse 1.2s infinite}
+
+/* ---------- territory cards ---------- */
+.tcard{display:flex; gap:11px; align-items:center}
+.tcard.owned{background:linear-gradient(175deg,#fdf6e4,#f4e6c4)}
+.tcard.owned .mport{background:radial-gradient(circle at 50% 30%,#7d5a17,#3d2a08 85%)}
+.tcard.boss .mport{background:radial-gradient(circle at 50% 30%,#8c6a10,#4a0d0d 85%); border-color:#ffd77a;
+  box-shadow:0 0 14px rgba(255,196,86,.45), inset 0 0 0 2px rgba(255,225,150,.3)}
+.tinfo{flex:1; min-width:0}
+.tinfo .tname{font-size:14.5px; font-weight:800; color:var(--ink)}
+.tinfo .tlord{font-size:11.5px; color:var(--ink-soft); margin-top:1px}
+.tinfo .tstat{display:flex; gap:9px; font-size:11px; color:var(--ink-soft); margin-top:4px; flex-wrap:wrap}
+.tinfo .tstat b{font-variant-numeric:tabular-nums}
+.own-tag{display:inline-block; font-size:10px; font-weight:800; color:#3d2705;
+  background:linear-gradient(180deg,#ffe9ac,var(--gold)); border:1px solid #7c5514; border-radius:5px; padding:1px 7px}
+.lock-tag{display:inline-block; font-size:10px; font-weight:800; color:#f3e2c0; background:#6b5638;
+  border-radius:5px; padding:1px 7px}
+#draft-panel .drow{display:flex; align-items:center; justify-content:space-between; gap:10px}
+#draft-panel .dtxt{font-size:12.5px; color:var(--ink-soft); line-height:1.5}
+#draft-panel .dtxt b{color:var(--ink)}
+
+/* ---------- profile ---------- */
+#portrait-wrap{display:flex; flex-direction:column; align-items:center; padding:18px 12px 14px;
+  background:
+    radial-gradient(circle at 50% 32%, rgba(244,180,150,.28), transparent 60%),
+    linear-gradient(175deg,#fdf3e0,#f1e0bd)}
+#portrait-wrap svg{width:190px; height:auto; filter:drop-shadow(0 6px 14px rgba(90,18,32,.35))}
+#profile-name{font-size:21px; font-weight:900; color:var(--crimson-d); margin-top:8px; letter-spacing:.1em}
+#profile-title{font-size:13px; color:var(--gold-d); font-weight:700; letter-spacing:.2em; margin-top:2px}
+.stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.stat-cell{background:rgba(255,250,238,.75); border:1px solid rgba(138,93,29,.45); border-radius:8px;
+  padding:8px 10px; text-align:center}
+.stat-cell .k{font-size:10.5px; color:var(--ink-soft); letter-spacing:.12em}
+.stat-cell .n{font-size:16px; font-weight:900; color:var(--crimson-d); font-variant-numeric:tabular-nums; margin-top:2px}
+.rank-road{display:flex; flex-direction:column; gap:0}
+.rank-step{display:flex; align-items:center; gap:10px; padding:7px 4px; font-size:13px; color:var(--ink-soft); position:relative}
+.rank-step .ric{width:30px; text-align:center; font-size:16px; filter:grayscale(1) opacity(.45)}
+.rank-step.done .ric,.rank-step.now .ric{filter:none}
+.rank-step.done{color:var(--ink)}
+.rank-step.now{color:var(--crimson-d); font-weight:900}
+.rank-step.now::before{content:'▶'; position:absolute; left:-8px; font-size:9px; color:var(--gold-d)}
+.rank-step .rneed{margin-left:auto; font-size:11px; font-variant-numeric:tabular-nums}
+.settings-row{display:flex; gap:8px}
+
+/* ---------- overlays ---------- */
+.overlay{position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+  padding:18px; background:rgba(18,3,14,.72); backdrop-filter:blur(3px); animation:ovIn .25s ease}
+@keyframes ovIn{from{opacity:0}to{opacity:1}}
+.overlay[hidden]{display:none}
+
+/* event card */
+#event-card{width:min(420px,94vw); max-height:88dvh; overflow-y:auto; scrollbar-width:none;
+  border-radius:16px; padding:0; transform-style:preserve-3d; animation:cardFlip .55s cubic-bezier(.2,.85,.3,1.05)}
+#event-card::-webkit-scrollbar{display:none}
+@keyframes cardFlip{0%{transform:rotateY(85deg) scale(.86); opacity:0}60%{opacity:1}100%{transform:none}}
+.ev-art{height:130px; display:flex; align-items:center; justify-content:center; font-size:64px; position:relative;
+  border-radius:14px 14px 0 0; overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 120%, rgba(244,213,141,.35), transparent 55%),
+    radial-gradient(circle at 50% 30%, #71203e, #2c0b1e 85%)}
+.ev-art .big{filter:drop-shadow(0 6px 14px rgba(0,0,0,.55)); animation:artFloat 3.2s ease-in-out infinite}
+@keyframes artFloat{50%{transform:translateY(-7px)}}
+.ev-art::after{content:''; position:absolute; left:0; right:0; bottom:0; height:12px;
+  background:radial-gradient(circle 7px at 7px -2px, rgba(244,213,141,.85) 4.5px, transparent 7px) repeat-x; background-size:14px 12px}
+.ev-tag{position:absolute; top:10px; left:10px; font-size:10.5px; font-weight:800; letter-spacing:.2em;
+  color:var(--gold-l); border:1px solid rgba(244,213,141,.6); border-radius:6px; padding:2px 8px;
+  background:rgba(20,3,14,.5)}
+.ev-tag.rare{color:#ffd1e0; border-color:#ff9db4; text-shadow:0 0 8px #ff5f87}
+.ev-body{padding:14px 16px 16px}
+.ev-title{font-size:18.5px; font-weight:900; color:var(--crimson-d); letter-spacing:.05em; text-align:center}
+.ev-title::after{content:''; display:block; width:70px; height:2px; margin:7px auto 0;
+  background:linear-gradient(90deg,transparent,var(--gold-d),transparent)}
+.ev-text{font-size:14px; line-height:1.75; color:var(--ink); margin:11px 2px 14px; white-space:pre-line}
+.ev-text i{color:var(--crimson); font-style:normal; font-weight:700}
+.ev-choices{display:flex; flex-direction:column; gap:9px}
+.choice{display:flex; flex-direction:column; align-items:stretch; text-align:left; gap:4px; padding:11px 13px;
+  border-radius:10px; border:1.5px solid var(--gold-d);
+  background:linear-gradient(180deg,#fdf5e2,#f0dfb9);
+  box-shadow:inset 0 1px 0 #fffbe9, 0 2px 5px rgba(70,30,10,.2); transition:transform .1s, filter .15s}
+.choice:active{transform:scale(.98); filter:brightness(.94)}
+.choice .c-label{font-size:14.5px; font-weight:800; color:var(--ink)}
+.choice .c-label::before{content:'❖ '; color:var(--gold-d); font-size:12px}
+.choice .c-hint{display:flex; flex-wrap:wrap; gap:5px}
+.hint-chip{font-size:11px; font-weight:800; padding:1px 7px; border-radius:6px; font-variant-numeric:tabular-nums;
+  background:rgba(120,80,20,.1); border:1px solid rgba(138,93,29,.4); color:var(--ink-soft)}
+.hint-chip.up{color:var(--good); border-color:rgba(46,125,79,.4); background:rgba(46,125,79,.08)}
+.hint-chip.down{color:var(--bad); border-color:rgba(179,54,43,.35); background:rgba(179,54,43,.07)}
+.hint-chip.mys{color:#6d4b9e; border-color:rgba(109,75,158,.4); background:rgba(109,75,158,.08)}
+.hint-chip.dice{color:#8a5d1d; background:rgba(217,164,65,.15)}
+.ev-result{animation:viewIn .3s ease}
+.ev-result .r-text{font-size:14px; line-height:1.75; color:var(--ink); margin:4px 2px 12px; white-space:pre-line}
+.ev-result .r-fx{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-bottom:14px}
+.r-stamp{text-align:center; font-size:15px; font-weight:900; letter-spacing:.3em; margin:2px 0 10px}
+.r-stamp.ok{color:var(--good)} .r-stamp.no{color:var(--bad)}
+
+/* war overlay */
+#war-box{width:min(420px,94vw); border-radius:16px; overflow:hidden; text-align:center;
+  animation:cardFlip .5s cubic-bezier(.2,.85,.3,1.05)}
+.war-stage{display:flex; align-items:center; justify-content:space-around; padding:22px 10px 14px; position:relative;
+  background:radial-gradient(circle at 50% 20%,#6b1b38,#20081a 80%)}
+.war-side{display:flex; flex-direction:column; align-items:center; gap:6px; width:40%}
+.war-face{width:74px; height:74px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+  font-size:42px; background:radial-gradient(circle at 50% 30%,#5d1832,#230a19 85%);
+  border:2.5px solid var(--gold-d); box-shadow:inset 0 -8px 14px rgba(0,0,0,.5), 0 4px 10px rgba(0,0,0,.4)}
+.war-name{font-size:12.5px; font-weight:800; color:var(--ivory)}
+.war-pow{font-size:14px; font-weight:900; color:var(--gold-l); font-variant-numeric:tabular-nums}
+.war-vs{font-size:26px; font-weight:900; color:#ffb1c4; text-shadow:0 0 14px #ff5f87; letter-spacing:.1em;
+  animation:vsPulse 1s ease-in-out infinite}
+@keyframes vsPulse{50%{transform:scale(1.18); text-shadow:0 0 22px #ff8ba8}}
+.war-body{padding:14px 16px 16px}
+.war-note{font-size:13px; color:var(--ink-soft); line-height:1.6; margin-bottom:12px}
+.war-note b{color:var(--ink)}
+.warring .war-stage{animation:shake .45s linear infinite}
+@keyframes shake{0%,100%{transform:translate(0,0)}20%{transform:translate(-5px,2px)}40%{transform:translate(4px,-3px)}60%{transform:translate(-4px,-2px)}80%{transform:translate(5px,3px)}}
+.clash{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:44px; animation:clashPop .4s ease infinite}
+@keyframes clashPop{0%,100%{transform:translate(-50%,-50%) scale(.9) rotate(-8deg)}50%{transform:translate(-50%,-50%) scale(1.25) rotate(8deg)}}
+.stamp{display:inline-block; font-size:34px; font-weight:900; letter-spacing:.25em; padding:10px 26px 8px;
+  border:4px solid currentColor; border-radius:10px; transform:rotate(-7deg);
+  animation:stampIn .45s cubic-bezier(.2,2.2,.4,1) both}
+.stamp.win{color:#b1852a; text-shadow:0 0 12px rgba(255,215,120,.6)}
+.stamp.lose{color:var(--bad)}
+@keyframes stampIn{0%{transform:rotate(-7deg) scale(2.6); opacity:0}100%{transform:rotate(-7deg) scale(1); opacity:1}}
+.flash{position:fixed; inset:0; z-index:90; pointer-events:none; animation:flashOut .55s ease-out both}
+.flash.gold{background:radial-gradient(circle,rgba(255,230,160,.95),rgba(255,215,120,.5))}
+.flash.red{background:radial-gradient(circle,rgba(200,40,40,.8),rgba(120,10,10,.45))}
+@keyframes flashOut{from{opacity:1}to{opacity:0}}
+
+/* promotion ceremony */
+#promo-box{width:min(430px,94vw); text-align:center; padding:34px 20px 26px; border-radius:18px; position:relative; overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255,226,150,.5), transparent 55%),
+    linear-gradient(170deg,#4a1128,#20081a);
+  border:3px solid var(--gold); box-shadow:0 0 0 6px rgba(217,164,65,.25), 0 0 70px rgba(255,205,100,.35)}
+#promo-box::before{content:''; position:absolute; left:50%; top:26%; width:560px; height:560px; transform:translate(-50%,-50%);
+  background:conic-gradient(from 0deg, rgba(255,220,140,.16) 0 9deg, transparent 9deg 18deg);
+  border-radius:50%; animation:rays 26s linear infinite; pointer-events:none}
+@keyframes rays{to{transform:translate(-50%,-50%) rotate(360deg)}}
+.promo-pre{font-size:13px; letter-spacing:.5em; color:var(--gold-l); opacity:.9}
+.promo-icon{font-size:64px; margin:10px 0 4px; display:inline-block; animation:crownDrop .8s cubic-bezier(.2,1.6,.4,1) both;
+  filter:drop-shadow(0 0 18px rgba(255,215,120,.8))}
+@keyframes crownDrop{0%{transform:translateY(-90px) scale(.4); opacity:0}70%{transform:translateY(6px) scale(1.08)}100%{transform:none; opacity:1}}
+.promo-title{font-size:34px; font-weight:900; letter-spacing:.22em; margin:2px 0 8px;
+  background:linear-gradient(180deg,#fff3cf,#ffd977 45%,#c8922e); -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 2px 8px rgba(255,205,100,.4))}
+.promo-desc{font-size:13.5px; line-height:1.8; color:#f2ddc2; white-space:pre-line; margin-bottom:8px}
+.promo-unlocks{display:flex; flex-direction:column; gap:5px; margin:10px auto 16px; max-width:300px}
+.unlock-chip{font-size:12px; font-weight:700; color:var(--gold-l); border:1px dashed rgba(244,213,141,.55);
+  border-radius:8px; padding:5px 10px; background:rgba(255,226,150,.07)}
+.particle{position:absolute; width:7px; height:7px; border-radius:50%; pointer-events:none;
+  background:radial-gradient(circle at 35% 30%,#fff6d8,var(--gold)); animation:sparkle 1.5s ease-out forwards}
+@keyframes sparkle{0%{transform:translate(0,0) scale(1); opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.1); opacity:0}}
+
+/* game over & ending */
+#over-box,#end-box{width:min(430px,94vw); text-align:center; padding:34px 22px 26px; border-radius:18px;
+  background:linear-gradient(170deg,#2c0b1e,#12040e); border:3px solid var(--crimson-d);
+  box-shadow:0 0 60px rgba(0,0,0,.8)}
+#over-box .o-icon{font-size:58px; filter:grayscale(.4)}
+#over-box h2{font-size:30px; letter-spacing:.35em; color:#e2b7a0; margin:10px 0 12px}
+#over-box .o-cause{font-size:14px; line-height:1.8; color:#d6b39a; white-space:pre-line; margin-bottom:18px}
+#end-box{border-color:var(--gold); box-shadow:0 0 0 6px rgba(217,164,65,.25), 0 0 80px rgba(255,205,100,.4); position:relative; overflow:hidden}
+#end-box::before{content:''; position:absolute; left:50%; top:30%; width:600px; height:600px; transform:translate(-50%,-50%);
+  background:conic-gradient(from 0deg, rgba(255,220,140,.14) 0 8deg, transparent 8deg 16deg); border-radius:50%; animation:rays 30s linear infinite}
+#end-box h2{font-size:38px; letter-spacing:.28em; margin:8px 0 4px;
+  background:linear-gradient(180deg,#fff3cf,#ffd977 45%,#c8922e); -webkit-background-clip:text; background-clip:text; color:transparent}
+#end-box .e-sub{font-size:13px; letter-spacing:.4em; color:var(--gold-l)}
+#end-box .e-txt{font-size:14px; line-height:1.9; color:#f2ddc2; margin:14px 0; white-space:pre-line}
+#end-box .e-stats{display:flex; justify-content:center; gap:14px; margin-bottom:18px; flex-wrap:wrap}
+#end-box .e-stats span{font-size:12px; color:var(--gold-l); border:1px solid rgba(244,213,141,.4); border-radius:8px; padding:4px 10px}
+
+/* ---------- title screen ---------- */
+#screen-title{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+  background:
+    radial-gradient(120% 85% at 50% -8%, #7a2040 0%, #43122b 45%, #1c0715 82%);
+  overflow:hidden}
+#screen-title::before{content:''; position:absolute; left:0; right:0; bottom:0; height:38vh; opacity:.7;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='680' height='240' viewBox='0 0 680 240'%3E%3Cg fill='%23100210'%3E%3Cpath d='M0 240 V190 H60 V178 H72 V190 H130 V178 H142 V190 H208 V240 Z'/%3E%3Cpath d='M472 240 V190 H538 V178 H550 V190 H608 V178 H620 V190 H680 V240 Z'/%3E%3Cpath d='M208 240 V150 L188 150 L228 122 H452 L492 150 L472 150 V240 Z'/%3E%3Cpath d='M256 122 V96 L238 96 L272 72 H408 L442 96 L424 96 V122 Z'/%3E%3Cpath d='M292 72 V52 L280 52 L318 30 H362 L400 52 L388 52 V72 Z'/%3E%3Cpath d='M334 30 V14 L340 4 L346 14 V30 Z'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:center bottom; background-size:min(96vw,680px) auto}
+#screen-title::after{content:''; position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(circle 42px at 80% 12%, rgba(255,224,178,.9) 0 34px, rgba(255,224,178,.12) 36px, transparent 42px),
+    radial-gradient(1.5px 1.5px at 14% 18%, rgba(255,240,220,.8) 50%, transparent 51%),
+    radial-gradient(2px 2px at 32% 8%, rgba(255,240,220,.7) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 58% 15%, rgba(255,240,220,.6) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 90% 34%, rgba(255,240,220,.5) 50%, transparent 51%)}
+.title-inner{position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; gap:10px;
+  padding:20px; width:min(440px,94vw); animation:viewIn .6s ease}
+.title-emblem{position:relative}
+.title-emblem svg{width:min(200px,46vw); height:auto; filter:drop-shadow(0 8px 24px rgba(0,0,0,.55))}
+.title-emblem::before{content:''; position:absolute; inset:-18%; border-radius:50%; z-index:-1;
+  background:radial-gradient(circle, rgba(255,190,150,.28), transparent 65%); animation:haloPulse 3.5s ease-in-out infinite}
+@keyframes haloPulse{50%{transform:scale(1.08); opacity:.7}}
+.game-title{display:flex; flex-direction:column; align-items:center; gap:2px; text-align:center; margin-top:2px}
+.game-title .gt-top{font-size:17px; font-weight:700; letter-spacing:.62em; text-indent:.62em; color:var(--pink-l);
+  text-shadow:0 0 14px rgba(255,157,180,.6)}
+.game-title .gt-main{font-size:52px; font-weight:900; letter-spacing:.16em; text-indent:.16em; line-height:1.15;
+  background:linear-gradient(180deg,#fff3cf 8%,#ffd977 48%,#c8922e 85%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 3px 3px rgba(60,10,20,.85)) drop-shadow(0 0 26px rgba(255,205,100,.35))}
+.title-tag{font-size:12.5px; color:#e8c9c9; letter-spacing:.12em; text-align:center; line-height:1.7; opacity:.95}
+.title-btns{display:flex; flex-direction:column; gap:10px; width:min(260px,80%); margin-top:14px}
+.title-foot{font-size:10.5px; color:#b98a96; letter-spacing:.28em; margin-top:16px}
+.title-save-info{font-size:11px; color:#f0cfa6; letter-spacing:.05em; margin-top:-2px; opacity:.9}
+
+/* ---------- fx layer ---------- */
+#fx{position:fixed; inset:0; z-index:100; pointer-events:none; overflow:hidden}
+.floater{position:absolute; font-size:14px; font-weight:900; font-variant-numeric:tabular-nums;
+  text-shadow:0 1px 3px rgba(0,0,0,.35); animation:floatUp 1.25s ease-out forwards; white-space:nowrap}
+.floater.up{color:#5ee790}
+.floater.down{color:#ff7d6e}
+@keyframes floatUp{0%{transform:translateY(0); opacity:0}12%{opacity:1}100%{transform:translateY(-46px); opacity:0}}
+#toasts{position:fixed; bottom:96px; left:50%; transform:translateX(-50%); z-index:80; display:flex;
+  flex-direction:column; align-items:center; gap:6px; width:min(440px,92vw); pointer-events:none}
+.toast{font-size:12.5px; font-weight:700; color:var(--ivory); background:rgba(40,10,26,.92);
+  border:1px solid var(--gold-d); border-radius:9px; padding:8px 15px; text-align:center;
+  box-shadow:0 4px 14px rgba(0,0,0,.4); animation:toastIn 2.6s ease forwards; max-width:100%}
+@keyframes toastIn{0%{opacity:0; transform:translateY(12px)}8%,82%{opacity:1; transform:none}100%{opacity:0; transform:translateY(-8px)}}
+
+.divider{height:12px; margin:2px 0;
+  background:radial-gradient(circle 6px at 6px -1px, transparent 5px, rgba(138,93,29,.5) 5.5px, transparent 7.5px) repeat-x;
+  background-size:12px 12px}
+.muted-note{font-size:11px; color:var(--ink-soft); text-align:center; opacity:.85; line-height:1.6}
+</style>
+</head>
+<body>
+<div id="backdrop" aria-hidden="true"></div>
+<div id="app">
+
+  <!-- ===== Title screen ===== -->
+  <section id="screen-title">
+    <div class="title-inner">
+      <div class="title-emblem" id="title-emblem"></div>
+      <h1 class="game-title">
+        <span class="gt-top">플라밍고 여제</span>
+        <span class="gt-main">홍학천하</span>
+      </h1>
+      <p class="title-tag">몰락한 홍학 귀족의 외동딸, 홍련.<br>분홍 깃털로 옥좌를 물들이고 천하를 통일하라.</p>
+      <div class="title-btns">
+        <button id="btn-continue" class="btn gold big">📜 이어하기</button>
+        <button id="btn-new" class="btn big">🌅 처음부터</button>
+      </div>
+      <p class="title-save-info" id="title-save-info"></p>
+      <p class="title-foot">🦩 大紅鶴國 御用 遊戲 🦩</p>
+    </div>
+  </section>
+
+  <!-- ===== Game ===== -->
+  <div id="game" hidden>
+    <header id="topbar">
+      <div class="res" id="res-gold" title="국고"><span class="ico">💰</span><span class="v">0</span></div>
+      <div class="res" id="res-food" title="식량"><span class="ico">🌾</span><span class="v">0</span></div>
+      <div class="res" id="res-pop"  title="민심"><span class="ico">❤️</span><span class="v">0</span></div>
+      <div class="res" id="res-army" title="군사력"><span class="ico">⚔️</span><span class="v">0</span></div>
+      <button id="btn-mute" title="소리 켜기/끄기">🔔</button>
+    </header>
+
+    <div id="rankstrip">
+      <span id="rank-badge">🥀 몰락 귀족</span>
+      <div id="prestige-wrap">
+        <div id="prestige-bar"><div id="prestige-fill"></div></div>
+        <div id="prestige-label">위신 0 / 120</div>
+      </div>
+      <span id="day-badge">1일차</span>
+    </div>
+
+    <main id="views">
+      <!-- 조정 -->
+      <section id="view-court" class="view active">
+        <div class="panel court-head">
+          <div class="court-scene" id="court-scene">🏯</div>
+          <p id="court-flavor"></p>
+        </div>
+        <button id="btn-day" class="btn gold big wfull"><span class="moon">🌅</span> 하루 보내기</button>
+        <div class="panel" id="report-panel">
+          <h3>오늘의 장계</h3>
+          <div id="daily-report"><div class="report-line"><span>아직 첫 조회가 열리지 않았사옵니다.</span></div></div>
+        </div>
+        <div class="panel log-panel">
+          <h3>조정 일지</h3>
+          <ul id="log"></ul>
+        </div>
+      </section>
+
+      <!-- 신하 -->
+      <section id="view-ministers" class="view">
+        <div class="panel">
+          <h3>어전 회의</h3>
+          <p class="muted-note" id="minister-note">동물 대신들을 등용하여 국정을 맡기소서. 충성도가 바닥나면… 칼끝이 옥좌를 향하옵니다.</p>
+        </div>
+        <div id="minister-list"></div>
+      </section>
+
+      <!-- 영지 / 전쟁 -->
+      <section id="view-map" class="view">
+        <div class="panel" id="draft-panel">
+          <h3>병조 · 징병</h3>
+          <div class="drow">
+            <p class="dtxt">북과 나팔을 울려 장정을 모으소서.<br><b id="draft-cost"></b></p>
+            <button id="btn-draft" class="btn small">🥁 징병</button>
+          </div>
+        </div>
+        <div id="territory-list"></div>
+      </section>
+
+      <!-- 여제 -->
+      <section id="view-profile" class="view">
+        <div class="panel" id="portrait-wrap">
+          <div id="profile-portrait"></div>
+          <div id="profile-name">홍련 (紅蓮)</div>
+          <div id="profile-title">몰락 귀족</div>
+        </div>
+        <div class="panel">
+          <h3>승급의 길</h3>
+          <div class="rank-road" id="rank-road"></div>
+        </div>
+        <div class="panel">
+          <h3>치세 실록</h3>
+          <div class="stat-grid" id="stat-grid"></div>
+        </div>
+        <div class="panel">
+          <h3>어명</h3>
+          <div class="settings-row">
+            <button id="btn-mute2" class="btn small">🔔 소리</button>
+            <button id="btn-reset" class="btn small">🔥 처음부터</button>
+          </div>
+          <p class="muted-note" style="margin-top:8px">치세는 매일 밤 자동으로 사관이 기록(저장)하옵니다.</p>
+        </div>
+      </section>
+    </main>
+
+    <nav id="tabbar">
+      <button class="tab active" data-tab="court"><span class="t-ico">🏯</span>조정</button>
+      <button class="tab" data-tab="ministers"><span class="t-ico">📜</span>신하</button>
+      <button class="tab" data-tab="map"><span class="t-ico">🗺️</span>영지</button>
+      <button class="tab" data-tab="profile"><span class="t-ico">👑</span>여제</button>
+    </nav>
+  </div>
+
+  <!-- ===== Overlays ===== -->
+  <div id="overlay-event" class="overlay" hidden>
+    <div class="panel" id="event-card"></div>
+  </div>
+
+  <div id="overlay-war" class="overlay" hidden>
+    <div class="panel" id="war-box"></div>
+  </div>
+
+  <div id="overlay-promo" class="overlay" hidden>
+    <div id="promo-box"></div>
+  </div>
+
+  <div id="overlay-over" class="overlay" hidden>
+    <div id="over-box"></div>
+  </div>
+
+  <div id="overlay-end" class="overlay" hidden>
+    <div id="end-box"></div>
+  </div>
+
+  <div id="fx"></div>
+  <div id="toasts"></div>
+</div>
+
+<script>
+'use strict';
+/* ================= error surface for headless verification ================= */
+window.addEventListener('error', function(e){
+  try{ document.body.dataset.err = ((document.body.dataset.err||'') + ' | ' + e.message).slice(0,900); }catch(_){}
+});
+window.addEventListener('unhandledrejection', function(e){
+  try{ document.body.dataset.err = ((document.body.dataset.err||'') + ' | rejection: ' + (e.reason && e.reason.message || e.reason)).slice(0,900); }catch(_){}
+});
+/* ============================================================
+   GAME DATA — declarative, easy to extend
+   ============================================================ */
+
+const SAVE_KEY = 'flamingo-empress-save';
+const MUTE_KEY = 'flamingo-empress-mute';
+
+const RES_META = {
+  gold:{icon:'💰', name:'국고'},
+  food:{icon:'🌾', name:'식량'},
+  pop:{icon:'❤️', name:'민심'},
+  army:{icon:'⚔️', name:'군사력'},
+  prestige:{icon:'✨', name:'위신'},
+};
+
+const RANKS = [
+  {name:'몰락 귀족', icon:'🥀', need:0,    desc:'가진 것이라곤 분홍 깃털과 오기뿐.'},
+  {name:'남작',      icon:'🎗️', need:100,  desc:'습지의 작은 영주. 그러나 눈은 옥좌를 향한다.'},
+  {name:'백작',      icon:'🌸', need:280,  desc:'홍학의 이름이 이웃 영지까지 울려 퍼진다.'},
+  {name:'공작',      icon:'🌺', need:600,  desc:'조정의 절반이 그대의 깃털 아래 모였다.'},
+  {name:'여왕',      icon:'👑', need:1100, desc:'왕관은 무겁고, 목은 길다. 버틸 수 있다.'},
+  {name:'여제',      icon:'🦩', need:2000, desc:'황궁 평원 너머, 사자의 옥좌만이 남았다.'},
+  {name:'성세천하',  icon:'☀️', need:3500, desc:'해가 지지 않는 분홍빛 천하.'},
+];
+
+/* ---------- ministers (동물 대신) ---------- */
+const MINISTERS = [
+  {id:'owl',      name:'부엉이 재상',     emoji:'🦉', stars:2, unlock:0, cost:70,
+    role:'매일 국고 수입 증가', fx:'gold', base:10, per:7,
+    quote:'"밤에도 장부는 감지 않사옵니다."'},
+  {id:'turtle',   name:'거북이 학사',     emoji:'🐢', stars:1, unlock:0, cost:60,
+    role:'매일 식량 수입 증가', fx:'food', base:10, per:7,
+    quote:'"농사는 느긋함이 팔 할이옵니다."'},
+  {id:'tiger',    name:'호랑이 대장군',   emoji:'🐯', stars:3, unlock:1, cost:130,
+    role:'매일 병력 충원 + 전투력 6%/성', fx:'army', base:2, per:2,
+    quote:'"어흥. 이만하면 군례(軍禮)이옵니다."'},
+  {id:'peacock',  name:'공작 예조판서',   emoji:'🦚', stars:2, unlock:1, cost:110,
+    role:'매일 민심 회복', fx:'pop', base:1, per:1,
+    quote:'"화려함도 정치옵니다, 폐하."'},
+  {id:'fox',      name:'여우 외교관',     emoji:'🦊', stars:3, unlock:2, cost:180,
+    role:'도박수 성공률 +6%/성', fx:'luck', base:0, per:0,
+    quote:'"거짓말은 아니옵고… 외교였사옵니다."'},
+  {id:'crane',    name:'두루미 어의',     emoji:'🦢', stars:3, unlock:2, cost:170,
+    role:'재난 피해 감소 (10%+5%/성)', fx:'guard', base:0, per:0,
+    quote:'"침 한 방이면 나랏병도 낫사옵니다."'},
+  {id:'cat',      name:'검은 고양이 밀정', emoji:'🐈‍⬛', stars:4, unlock:3, cost:260,
+    role:'숨은 효과·배신 조짐 간파', fx:'spy', base:0, per:0,
+    quote:'"…폐하, 소인은 여기 없었사옵니다."'},
+  {id:'elephant', name:'코끼리 호조판서', emoji:'🐘', stars:4, unlock:3, cost:300,
+    role:'매일 국고 대폭 증가', fx:'gold', base:22, per:12,
+    quote:'"국고는 코로 세는 게 정확하옵니다."'},
+  {id:'hawk',     name:'매 금위대장',     emoji:'🦅', stars:4, unlock:4, cost:340,
+    role:'매일 병력 충원 + 전투 손실 절감', fx:'army', base:3, per:2,
+    quote:'"하늘에서 보면 적진은 모이통이옵니다."'},
+  {id:'rabbit',   name:'토끼 도승지',     emoji:'🐇', stars:3, unlock:4, cost:280,
+    role:'대신들의 충성도 자동 관리', fx:'heart', base:0, per:0,
+    quote:'"당근과 채찍 중… 당근만 쓰옵니다."'},
+];
+
+/* ---------- territories & rival lords ---------- */
+const TERRITORIES = [
+  {id:'home',    name:'홍학 습지',   emoji:'🦩', lord:'여제의 본향', def:0,    unlock:0, prestige:0,   income:{gold:26, food:15}, home:true,
+    desc:'분홍 깃털의 고향. 미꾸라지가 살진 땅.'},
+  {id:'reed',    name:'갈대 늪',     emoji:'🐸', lord:'두꺼비 촌장', def:35,   unlock:0, prestige:50,  income:{gold:10, food:16},
+    desc:'"개굴… 세금은 못 내겠소." — 두꺼비 촌장'},
+  {id:'coral',   name:'산호 해안',   emoji:'🦀', lord:'게 제독',     def:75,   unlock:1, prestige:75,  income:{gold:22, food:10},
+    desc:'옆으로만 걷지만 함대는 앞으로 온다.'},
+  {id:'bamboo',  name:'대나무 숲',   emoji:'🐼', lord:'판다 은자',   def:120,  unlock:1, prestige:100,  income:{gold:14, food:30},
+    desc:'싸움은 싫다면서 죽창은 잘 깎는다.'},
+  {id:'birch',   name:'자작나무 언덕', emoji:'🐗', lord:'멧돼지 대공', def:180,  unlock:2, prestige:140, income:{gold:30, food:20},
+    desc:'돌격밖에 모르는 사내. 그래서 무섭다.'},
+  {id:'canyon',  name:'검은 협곡',   emoji:'🐊', lord:'악어 군벌',   def:260,  unlock:2, prestige:190, income:{gold:46, food:14},
+    desc:'눈물을 흘리며 세금을 걷는다. 물론 거짓 눈물.'},
+  {id:'desert',  name:'황금 사막',   emoji:'🐆', lord:'하이에나 여왕', def:350,  unlock:3, prestige:240, income:{gold:72, food:6},
+    desc:'웃음소리가 들리면 이미 포위된 것이다.'},
+  {id:'frost',   name:'서리 고원',   emoji:'🐺', lord:'늑대 칸',     def:460,  unlock:3, prestige:310, income:{gold:50, food:40},
+    desc:'달을 보고 우는 것이 아니라 그대를 보고 운다.'},
+  {id:'volcano', name:'화산 분지',   emoji:'🦏', lord:'코뿔소 장군', def:620,  unlock:4, prestige:400, income:{gold:92, food:20},
+    desc:'갑옷이 필요 없는 유일한 장군.'},
+  {id:'cloud',   name:'구름 산맥',   emoji:'🦅', lord:'독수리 대공', def:800,  unlock:4, prestige:500, income:{gold:82, food:60},
+    desc:'그의 영지는 하늘. 세금도 하늘 높은 줄 모른다.'},
+  {id:'plain',   name:'황궁 평원',   emoji:'🦁', lord:'사자 황제',   def:1100, unlock:5, prestige:1000, income:{gold:220, food:120}, boss:true,
+    desc:'백수의 왕좌. 갈기 아래 천하가 엎드려 있다.'},
+];
+
+/* ---------- events (사건첩) ---------- */
+/* fx keys: gold, food, pop, army, prestige / hfx = hidden effects / loyal = all-minister loyalty
+   risky:{p, win:{text,fx}, lose:{text,fx}} — fox boosts p / req,noflag,setFlag chain control */
+const EVENTS = [
+  /* === 재난 === */
+  {id:'drought', title:'가뭄', icon:'☀️', tag:'재난', minRank:0, weight:10,
+    text:'석 달 열흘, 비 한 방울 내리지 않사옵니다.\n논바닥이 홍학 다리처럼 쩍쩍 갈라지고, 백성들은 하늘만 쳐다보옵니다.',
+    choices:[
+      {label:'기우제를 성대히 올린다', fx:{gold:-40}, risky:{p:.55,
+        win:{text:'제단의 향이 다 타기도 전에 먹구름이 몰려왔다! 백성들이 "여제 폐하 만세!"를 외친다.', fx:{pop:12, prestige:8}},
+        lose:{text:'사흘을 빌었으나 하늘은 새파랗다. 무당만 배불렸다는 수군거림이 돈다.', fx:{pop:-5}}}},
+      {label:'왕실 곳간을 연다', fx:{food:-40, pop:14}, result:'곳간 문이 열리자 백성들이 눈물을 훔친다. "굶어도 폐하와 굶겠소!"'},
+      {label:'하늘의 뜻이니 버티라 이른다', fx:{pop:-11}, result:'"하늘 탓, 구름 탓…" 백성들의 원망이 담장을 넘는다.'}]},
+
+  {id:'plague', title:'역병', icon:'🤒', tag:'재난', minRank:0, weight:8,
+    text:'남쪽 고을에 역병이 돌기 시작했사옵니다.\n기침 소리가 성벽을 타고 올라오는 듯하옵니다.',
+    choices:[
+      {label:'어의와 약재를 급파한다', fx:{gold:-50, pop:10, prestige:6}, result:'약탕 냄새가 고을을 덮었다. 역병은 물러가고, 민심은 훈훈해졌다.'},
+      {label:'고을을 봉쇄한다', fx:{pop:-9, food:-12}, result:'차갑지만 확실한 처방. 역병은 갇혔으나 원성도 함께 갇히지 못했다.'},
+      {label:'소문 단속만 한다', risky:{p:.4,
+        win:{text:'다행히 가벼운 고뿔이었다. 조용히 지나갔다.', fx:{}},
+        lose:{text:'역병이 수도까지 번졌다! 뒤늦은 수습에 국고와 민심이 함께 앓았다.', fx:{gold:-60, pop:-14}}}}]},
+
+  {id:'flood', title:'대홍수', icon:'🌊', tag:'재난', minRank:0, weight:8,
+    text:'큰물이 졌사옵니다. 강이 마을 하나를 통째로 삼키려 하옵니다.\n다리 긴 홍학이야 물이 반갑지만, 백성은 그렇지 않사옵니다.',
+    choices:[
+      {label:'제방을 쌓는다', fx:{gold:-60, prestige:6}, flag:'dam', result:'튼튼한 제방이 섰다. 후일 장마에도 든든하리라.'},
+      {label:'이재민을 구휼한다', fx:{food:-40, pop:12}, result:'죽 한 그릇에 담긴 온기. 백성들이 여제의 이름을 부르며 운다.'},
+      {label:'물길은 하늘의 일', fx:{pop:-14}, result:'"폐하의 다리는 길어서 물난리를 모르신다지…" 뼈아픈 농이 돈다.'}]},
+
+  {id:'locust', title:'메뚜기 떼', icon:'🦗', tag:'재난', minRank:0, weight:8,
+    text:'하늘이 새까맣게 물들었사옵니다. 구름이 아니라 메뚜기 떼이옵니다!\n놈들이 지나간 논은 홍학 뒷머리처럼 휑해지옵니다.',
+    choices:[
+      {label:'병사를 총동원해 쫓는다', fx:{army:-8, food:-15}, result:'병사들이 밤새 횃불을 휘둘렀다. 피해를 절반으로 막았다.'},
+      {label:'논밭에 불을 놓아 차단한다', fx:{food:-35, pop:6}, result:'뼈아픈 결단이었으나 이웃 고을은 살렸다. 백성들이 고개를 숙인다.'},
+      {label:'새들을 풀어 잡아먹게 한다', risky:{p:.5,
+        win:{text:'홍학국의 새들이 포식했다! 메뚜기 볶음이 저잣거리 별미가 되었다.', fx:{food:20, pop:6}},
+        lose:{text:'새들이 메뚜기 대신 낟알을 쪼아 먹었다…', fx:{food:-30}}}}]},
+
+  {id:'coldwave', title:'혹한', icon:'❄️', tag:'재난', minRank:1, weight:7,
+    text:'백 년 만의 한파라 하옵니다. 우물이 얼고, 홍학들의 외다리 서기가 두 다리 서기로 바뀌었사옵니다.',
+    choices:[
+      {label:'땔감을 배급한다', fx:{gold:-50, pop:12}, result:'집집마다 굴뚝에 연기가 올랐다. 언 손이 여제의 이름을 쓴다.'},
+      {label:'궁의 문을 열어 재운다', fx:{gold:-20, pop:15, prestige:6}, result:'용상 아래서 코 고는 소리가 들리는 궁궐. 사관은 "성군의 밤"이라 적었다.'},
+      {label:'각자 알아서 버티라', fx:{pop:-12, food:-20}, result:'봄이 왔을 때, 마을은 반쯤 비어 있었다.'}]},
+
+  {id:'wildfire', title:'산불', icon:'🔥', tag:'재난', minRank:1, weight:7,
+    text:'동쪽 산등성이가 붉게 타오르옵니다. 바람은 하필 도성 쪽으로 부옵니다.',
+    choices:[
+      {label:'총력 진화를 명한다', fx:{gold:-40, army:-10, pop:10}, result:'사흘 밤낮의 사투 끝에 불길이 잡혔다. 그을린 병사들에게 술을 내렸다.'},
+      {label:'맞불을 놓는다', risky:{p:.55,
+        win:{text:'맞불이 불길을 삼켰다! 병법을 아는 여제라는 칭송이 자자하다.', fx:{prestige:10, pop:6}},
+        lose:{text:'바람이 변덕을 부렸다. 불길이 두 배가 되었다…', fx:{gold:-50, pop:-10}}}},
+      {label:'비를 기다린다', fx:{food:-30, pop:-8}, result:'비는 왔다. 다 타고 난 다음에.'}]},
+
+  {id:'rats', title:'곳간의 쥐 떼', icon:'🐀', tag:'재난', minRank:0, weight:8,
+    text:'궁중 곳간에 쥐 떼가 들끓사옵니다. 낟알 축나는 소리가 밤마다 사각사각 들리옵니다.',
+    choices:[
+      {label:'고양이 부대를 창설한다', fx:{gold:-25, prestige:4}, result:'어영묘군(御營猫軍) 창설. 곳간이 조용해지고 고양이들은 통통해졌다.'},
+      {label:'쥐덫과 독을 놓는다', fx:{gold:-10, food:-10}, result:'잡긴 잡았으나 이미 축난 뒤였다.'},
+      {label:'내버려 둔다', fx:{food:-40}, result:'쥐들이 곳간에서 잔치를 벌였다. 상석엔 제일 살진 놈이 앉았다고 한다.'}]},
+
+  {id:'monsoon', title:'긴 장마', icon:'🌧️', tag:'재난', minRank:1, weight:7,
+    text:'장마가 보름째 이어지옵니다. 빨래도, 민심도 눅눅해지옵니다.',
+    choices:[
+      {label:'배수로를 정비한다', fx:{gold:-40, pop:6}, result:'물길이 트이자 저잣거리가 살아났다.'},
+      {label:'우비를 백성에게 내린다', fx:{gold:-30, pop:10}, result:'왕실 문양이 박힌 도롱이가 유행이 되었다.'},
+      {label:'젖은 채로 둔다', fx:{food:-30, pop:-8}, result:'곰팡이가 곳간을 먼저 접수했다.'}]},
+
+  /* === 조정 / 정치 === */
+  {id:'bribe', title:'상인 길드의 뇌물', icon:'💼', tag:'유혹', minRank:0, weight:9,
+    text:'상인 길드장이 야심한 밤, 옻칠 상자를 들고 입궐했사옵니다.\n"폐하, 세관의 눈을… 조금만 감아주시옵소서."',
+    choices:[
+      {label:'상자를 받는다', fx:{gold:90}, hfx:{pop:-8}, flag:'guildDirt', result:'묵직한 금괴가 국고로… 아니, 일단 침전으로 들어왔다. 어디선가 붓 드는 소리가 들린 것 같다.'},
+      {label:'호통쳐 내쫓는다', fx:{pop:8, prestige:6}, result:'"홍학의 깃털은 금으로도 물들지 않는다!" 소문이 저잣거리에 퍼져 갈채를 받았다.'},
+      {label:'받고, 그 자리에서 벌금을 매긴다', risky:{p:.5,
+        win:{text:'"뇌물죄 벌금은 뇌물의 곱절이니라." 길드장의 얼굴이 상자보다 하얘졌다.', fx:{gold:150, prestige:8}},
+        lose:{text:'길드가 앙심을 품고 도성의 물가를 올려버렸다.', fx:{pop:-10, gold:-30}}}}]},
+
+  {id:'marriage', title:'혼인 동맹 제안', icon:'💍', tag:'외교', minRank:1, weight:8,
+    text:'이웃 두루미국에서 국서가 왔사옵니다.\n"귀국의 여제와 우리 왕자의 혼인으로 양국의 우의를…"\n동봉된 초상화 속 왕자는 다리가 퍽 길쭉하옵니다.',
+    choices:[
+      {label:'지참금만 두둑하면 고려해보겠다 한다', fx:{gold:80, army:15, prestige:-8}, result:'두루미국이 성의를 보내왔다. 혼담은… 무기한 연기됐지만 금궤는 도착했다.'},
+      {label:'"짐의 배필은 천하다"라며 거절한다', fx:{prestige:12, pop:5}, result:'사관이 이 한마디를 대서특필했다. 온 나라 처녀들이 통쾌해했다.'},
+      {label:'왕자를 사절로 초청해 간을 본다', risky:{p:.6,
+        win:{text:'왕자는 어리석었으나 예물은 훌륭했다. 예물만 받고 정중히 돌려보냈다.', fx:{gold:60, prestige:5}},
+        lose:{text:'왕자가 궁중 연못의 미꾸라지를 다 먹어치우고 갔다. 접대비만 날렸다.', fx:{gold:-40, food:-20}}}}]},
+
+  {id:'slander', title:'신하의 모함', icon:'🗡️', tag:'조정', minRank:0, weight:8,
+    text:'익명의 상소가 올라왔사옵니다.\n"아무개 대신이 뒤로 사병을 기른다 하옵니다!"\n필체가 어딘가 낯익사옵니다.',
+    choices:[
+      {label:'친히 국문하여 진상을 밝힌다', fx:{gold:-30, prestige:8}, loyal:8, result:'모함으로 밝혀졌다. 무고한 대신은 감읍하여 눈물을 쏟았고, 투서한 자는 유배됐다.'},
+      {label:'긴말 말고 그 대신을 유배 보낸다', fx:{prestige:4}, loyal:-12, result:'대신들의 눈빛이 싸늘해졌다. "다음은 누구 차례인가…"'},
+      {label:'상소를 화로에 던진다', fx:{}, loyal:3, result:'"짐은 깃털은 뽑아도 신하는 안 뽑는다." 대신들이 남몰래 가슴을 쓸어내렸다.'}]},
+
+  {id:'petition', title:'백성의 탄원', icon:'📜', tag:'민심', minRank:0, weight:10,
+    text:'백성 대표가 엎드려 아뢰옵니다.\n"세금이 무겁사옵니다. 미꾸라지 한 마리 잡으면 반 마리를 바치는 형국이옵니다."',
+    choices:[
+      {label:'세금을 감면한다', fx:{gold:-55, pop:15}, result:'저잣거리에 만세 소리가 울렸다. 그날 미꾸라지값이 내렸다.'},
+      {label:'현행대로 유지한다', fx:{pop:-4}, result:'"나라 살림도 살림이니라." 백성들은 한숨을 쉬며 돌아갔다.'},
+      {label:'오히려 올린다', fx:{gold:70, pop:-13}, result:'국고는 불었지만, 밤마다 담벼락에 여제의 낙서 초상이 늘어난다. 다리가 유난히 얇게 그려져 있다.'}]},
+
+  {id:'harvest', title:'대풍년', icon:'🌾', tag:'길조', minRank:0, weight:9,
+    text:'올해 농사가 대풍이옵니다! 낟가리가 홍학 키보다 높이 쌓였사옵니다.',
+    choices:[
+      {label:'곳간에 쟁여둔다', fx:{food:70}, result:'곳간이 그득하니 겨울이 두렵지 않다.'},
+      {label:'내다 팔아 국고를 채운다', fx:{gold:65, food:15}, result:'이웃 나라 상인들이 줄을 섰다. 시세도 좋았다.'},
+      {label:'추수 잔치를 연다', fx:{food:-15, pop:16, prestige:5}, result:'사흘 밤낮 북소리가 그치지 않았다. 홍학 군무가 장관이었다.'}]},
+
+  {id:'bandits', title:'도적 떼 출몰', icon:'🏴', tag:'치안', minRank:0, weight:9,
+    text:'붉은수염 너구리단이 상단을 털었다 하옵니다.\n두목은 "세금보다야 우리가 싸다"라는 방까지 붙였사옵니다.',
+    choices:[
+      {label:'토벌군을 보낸다', risky:{p:.6,
+        win:{text:'소굴을 소탕했다! 장물 창고에서 금은보화가 쏟아졌다.', fx:{gold:70, prestige:10, army:-6}},
+        lose:{text:'놈들의 함정에 빠졌다. 병사들이 진흙탕에서 허우적댔다.', fx:{army:-18, pop:-5}}}},
+      {label:'현상금을 건다', fx:{gold:-50, pop:6}, result:'사냥꾼들이 움직였다. 너구리단은 국경 밖으로 줄행랑쳤다.'},
+      {label:'상단더러 알아서 하라 한다', fx:{pop:-10, gold:-20}, result:'상단들이 호위비를 물가에 얹었다. 결국 백성이 문다.'}]},
+
+  {id:'envoy', title:'대국의 사신', icon:'🎎', tag:'외교', minRank:1, weight:8,
+    text:'대국의 사신이 국경을 넘었다 하옵니다. 접대의 격이 곧 나라의 격이라, 예조가 발을 동동 구르옵니다.',
+    choices:[
+      {label:'국빈의 예로 성대히 맞는다', fx:{gold:-70, prestige:16}, result:'사신이 "홍학국의 예법이 대국보다 낫다"는 장계를 올렸다 한다.'},
+      {label:'조촐하나 정갈하게 대접한다', fx:{gold:-25, prestige:5}, result:'담백한 상차림에 사신이 고개를 끄덕였다. "실속 있는 나라로군."'},
+      {label:'문전박대한다', fx:{prestige:-10, pop:4}, result:'백성들은 통쾌해했지만… 대국의 국경 수비대가 두 배로 늘었다.'}]},
+
+  {id:'palace', title:'낡은 궁궐', icon:'🏯', tag:'조정', minRank:0, weight:7, noflag:'roofLeak',
+    text:'대전 지붕의 단청이 벗겨지고 서까래가 삐걱대옵니다.\n공조판서가 견적서를 들고 눈치를 보옵니다.',
+    choices:[
+      {label:'금박 단청으로 대보수한다', fx:{gold:-80, prestige:14, pop:4}, result:'궁궐이 노을보다 붉고 아침해보다 금빛이다. 구경꾼이 줄을 잇는다.'},
+      {label:'새는 곳만 때운다', fx:{gold:-30}, result:'실속 보수. 티는 안 나지만 비는 안 샌다.'},
+      {label:'다음 해로 미룬다', flag:'roofLeak', result:'"아직 버틸 만하니라." …과연 그럴까.'}]},
+
+  {id:'roofleak', title:'어전에 비가 샌다', icon:'💧', tag:'조정', minRank:0, weight:99, req:'roofLeak', once:true,
+    text:'조회 도중 여제의 이마에 물방울이 똑, 떨어졌사옵니다.\n미뤄둔 지붕이 기어이 일을 냈사옵니다. 대신들이 못 본 척 천장만 보옵니다.',
+    choices:[
+      {label:'이제라도 수리한다', fx:{gold:-70}, clearFlag:'roofLeak', result:'목수들이 혀를 찼다. "진작 부르시지…" 공임이 갑절이 됐다.'},
+      {label:'옥좌 옆에 대야를 둔다', fx:{pop:-5, prestige:-8}, clearFlag:'roofLeak', result:'"빗물 받는 옥좌"가 이웃 나라 웃음거리가 되었다. 결국 나중에 몰래 고쳤다.'}]},
+
+  {id:'exam', title:'과거 시험', icon:'🖋️', tag:'조정', minRank:1, weight:7,
+    text:'예조에서 과거 시험 개최를 청하옵니다.\n"인재는 나라의 기둥이온데, 요즘 기둥이 좀 부족하옵니다."',
+    choices:[
+      {label:'성대히 개최한다', fx:{gold:-50, prestige:12}, loyal:6, result:'전국의 수재들이 모여들었다. 장원급제자의 답안이 명문이라 소문났다.'},
+      {label:'무예 시험도 함께 연다', fx:{gold:-70, prestige:10, army:15}, result:'문무겸전! 활 잘 쏘는 선비와 글 잘 쓰는 장사가 함께 등용됐다.'},
+      {label:'올해는 거른다', fx:{pop:-6}, loyal:-4, result:'낙방 경력 3회차 선비들의 한숨이 도성을 덮었다.'}]},
+
+  {id:'rumor', title:'저잣거리의 소문', icon:'🗣️', tag:'민심', minRank:0, weight:9,
+    text:'"여제 폐하는 수라상에 새우만 올리신다더라. 그래서 깃털이 붉으신 거라더라."\n…근거 없는 소문이 저잣거리에 파다하옵니다.',
+    choices:[
+      {label:'"맞다, 새우가 맛있느니라" 인정한다', fx:{pop:11, prestige:4}, result:'여제의 쿨한 대답이 오히려 화제가 됐다. 도성 새우값이 폭등했다.'},
+      {label:'유언비어를 단속한다', fx:{pop:-8, prestige:3}, result:'포졸들이 저잣거리를 훑자 입은 닫혔으나 마음도 닫혔다.'},
+      {label:'전국 새우 잔치를 연다', fx:{gold:-45, pop:16}, result:'"소문이 잔치가 될 줄이야!" 온 백성이 새우를 구우며 여제를 칭송했다.'}]},
+
+  {id:'assassin', title:'자객', icon:'🌘', tag:'위기', minRank:2, weight:6,
+    text:'삼경, 침전의 창호지에 그림자가 어른거리옵니다.\n비수를 문 자객이옵니다!',
+    choices:[
+      {label:'금위군을 부른다', fx:{army:-4, prestige:5}, result:'호위 무사들이 순식간에 제압했다. 배후는 끝내 입을 열지 않았다.'},
+      {label:'친히 상대한다', risky:{p:.45,
+        win:{text:'긴 다리로 날린 일격! 자객이 나가떨어졌다. "홍학각(紅鶴脚)"의 전설이 시작됐다.', fx:{prestige:18, pop:8}},
+        lose:{text:'간신히 물리쳤으나 어깨의 깃털이 한 움큼 잘렸다. 어의가 밤새 곁을 지켰다.', fx:{pop:-5, gold:-30}}}},
+      {label:'"거기 두고 가는 게 신상에 좋으리라"', risky:{p:.35,
+        win:{text:'여제의 담대함에 자객이 비수를 버리고 엎드렸다. "…모시겠나이다." 밀정으로 삼았다.', fx:{prestige:14, army:6}},
+        lose:{text:'자객은 도망갔고, 여제의 허세는 야사(野史)에 실렸다.', fx:{prestige:-5}}}}]},
+
+  {id:'pearl', title:'습지의 진주', icon:'🦪', tag:'길조', minRank:0, weight:7,
+    text:'홍학 습지에서 아이 주먹만 한 분홍 진주가 나왔사옵니다!\n발견한 어부가 진주를 두 손으로 받쳐 들고 입궐했사옵니다.',
+    choices:[
+      {label:'후히 사들여 국고 보물로 삼는다', fx:{gold:-30, prestige:10}, result:'왕실 보물전에 "홍주(紅珠)"가 안치됐다. 구경 오는 사절이 늘었다.'},
+      {label:'어부에게 벼슬을 내리고 진주는 백성에 공개한다', fx:{pop:14, prestige:5}, result:'"우리 여제는 보물보다 백성!" 어부는 진주감찰관(?)이 되었다.'},
+      {label:'왕관에 박아 넣는다', fx:{prestige:12, pop:-4}, result:'왕관이 눈부시게 화려해졌다. 사치라는 상소가 두어 장 올라왔지만, 뭐 어떤가. 예쁜데.'}]},
+
+  {id:'troupe', title:'유랑 극단', icon:'🎭', tag:'민심', minRank:0, weight:8,
+    text:'국경 너머에서 온 유랑 극단이 공연 허가를 청하옵니다.\n대표작은 <어느 홍학의 사랑>이라 하옵니다. …어딘가 낯익은 제목이옵니다.',
+    choices:[
+      {label:'궁중 초청 공연을 연다', fx:{gold:-50, pop:14, prestige:5}, result:'여제가 3막에서 눈물을 훔쳤다는 목격담이 온 나라에 퍼졌다. 표가 동났다.'},
+      {label:'저잣거리 공연만 허가한다', fx:{gold:-15, pop:9}, result:'저잣거리가 웃음바다가 됐다. 극단은 다음 마을로 떠나며 여제를 찬양했다.'},
+      {label:'수상하니 내쫓는다', fx:{pop:-8}, result:'알고 보니 그냥 극단이었다. 명작 하나를 놓쳤다.'}]},
+
+  {id:'monk', title:'노승의 예언', icon:'🧘', tag:'기연', minRank:0, weight:6, once:true, noflag:'prophecy',
+    text:'지팡이를 짚은 눈먼 노승이 궁문 앞에서 외치옵니다.\n"분홍 날개가 해를 삼키는 꿈을 꾸었노라. 시주 한 푼이면 길흉을 마저 일러주지."',
+    choices:[
+      {label:'후히 시주한다', fx:{gold:-30}, flag:'prophecy', result:'"머지않아 길조가 깃들 것이니라." 노승은 연기처럼 사라졌다. 두고 볼 일이다.'},
+      {label:'궁금하지만 참는다', result:'노승은 껄껄 웃으며 떠났다. "아까운 것…"'},
+      {label:'혹세무민이라며 캐묻는다', risky:{p:.5,
+        win:{text:'노승은 사실 은거한 명재상이었다! 하룻밤 국정 자문이 천금과 같았다.', fx:{prestige:10, gold:30}},
+        lose:{text:'진짜 그냥 노승이었다. 실랑이 끝에 지팡이로 정강이만 맞았다.', fx:{prestige:-4}}}}]},
+
+  {id:'prophecy2', title:'노승의 길조', icon:'🌅', tag:'기연', minRank:0, weight:99, req:'prophecy', once:true,
+    text:'그 노승이 다시 나타나 합장하옵니다.\n"시주의 공덕이 하늘에 닿았느니라."\n그가 지팡이로 가리킨 곳에, 오래 잊혔던 왕실의 보물 창고가 있었사옵니다!',
+    choices:[
+      {label:'하늘에 감사한다', fx:{gold:120, prestige:15, pop:8}, clearFlag:'prophecy', result:'선대 여왕의 금붙이가 쏟아져 나왔다. 노승은 이번에야말로 연기처럼 사라졌다.'}]},
+
+  {id:'border', title:'국경 분쟁', icon:'🚩', tag:'외교', minRank:1, weight:8,
+    text:'이웃 영주의 병사들이 국경의 우물 하나를 두고 시비를 걸어왔사옵니다.\n"물맛이 좋은 게 죄"라며 병조판서가 이를 갈고 있사옵니다.',
+    choices:[
+      {label:'군기를 세워 무력 시위한다', fx:{army:-6, prestige:10}, result:'홍학군의 깃발이 국경에 늘어서자 상대가 슬그머니 물러났다.'},
+      {label:'협상단을 보낸다', fx:{gold:-40, prestige:4}, result:'"우물은 나누고 물값은 받는다." 실리를 챙긴 합의였다.'},
+      {label:'우물 하나쯤 양보한다', fx:{pop:-6, prestige:-6}, result:'"다음엔 강을 달라 하겠군." 병조판서의 예언이 불길하다.'}]},
+
+  {id:'birthday', title:'재상의 생일', icon:'🎂', tag:'조정', minRank:0, weight:7, needMinister:true,
+    text:'내일이 원로 대신의 회갑이라 하옵니다.\n승정원이 넌지시 아뢰옵니다. "폐하… 하례품을 준비하심이…"',
+    choices:[
+      {label:'어필 족자와 비단을 하사한다', fx:{gold:-40}, loyal:12, result:'대신이 족자를 안고 목 놓아 울었다. "이 한 몸, 폐하의 것이옵니다!"'},
+      {label:'축하 교지만 내린다', loyal:4, result:'격식은 차렸다. 대신은 웃었지만 눈은 웃지 않았다.'},
+      {label:'깜빡 잊는다', loyal:-10, result:'조회 내내 대신의 한숨 소리가 유난히 컸다.'}]},
+
+  {id:'silk', title:'서역의 비단 상인', icon:'🧵', tag:'유혹', minRank:1, weight:7,
+    text:'서역 상인이 노을빛 비단을 펼쳐 보이옵니다.\n"홍학 깃털색과 똑같은 비단은 천하에 이것뿐이옵니다, 폐하."',
+    choices:[
+      {label:'왕실 예복감으로 사들인다', fx:{gold:-90, prestige:14}, result:'노을빛 곤룡포가 완성됐다. 조회 때마다 대신들이 눈을 못 뗀다.'},
+      {label:'값을 후려쳐 본다', risky:{p:.55,
+        win:{text:'"여, 여제 폐하께서 직접 흥정을…!" 상인이 얼떨결에 반값에 넘겼다.', fx:{gold:-45, prestige:12}},
+        lose:{text:'상인이 비단을 착착 접었다. "인연이 아닌가 보옵니다." 소문난 비단은 이웃 나라 여왕의 차지가 됐다.', fx:{prestige:-6}}}},
+      {label:'"깃털이 있는데 비단이 왜 필요하냐"', fx:{prestige:3, pop:3}, result:'명언으로 회자되었다. 상인마저 감탄하며 부채 하나를 두고 갔다.'}]},
+
+  {id:'invention', title:'소년의 발명', icon:'⚙️', tag:'기연', minRank:0, weight:6, once:true,
+    text:'열두 살 수달 소년이 이상한 기계를 끌고 왔사옵니다.\n"물레방아로 논에 물을 대는 기계이옵니다! 아버지 허리가 안 아프게요."',
+    choices:[
+      {label:'상을 내리고 전국에 보급한다', fx:{gold:-30, pop:8}, permFood:6, result:'수차(水車)가 전국에 돌았다. 앞으로 식량 수입이 매일 +6 늘어난다!'},
+      {label:'기특하다며 머리만 쓰다듬는다', fx:{pop:2}, result:'소년은 시무룩하게 돌아갔다. 십 년 뒤 이웃 나라의 대발명가가 되었다고 한다…'}]},
+
+  {id:'hotspring', title:'온천 발견', icon:'♨️', tag:'길조', minRank:1, weight:6, once:true,
+    text:'북쪽 계곡에서 온천이 솟았사옵니다!\n홍학이 몸을 담그면 깃털이 더 붉어진다는 소문에 벌써 인파가 몰리옵니다.',
+    choices:[
+      {label:'왕실 전용 온천으로 삼는다', fx:{gold:-60, prestige:12}, result:'어탕(御湯)이 완성됐다. 여제의 깃털에서 윤이 흐른다.'},
+      {label:'백성에게 개방한다', fx:{pop:15, prestige:4}, result:'"여제 폐하의 은혜가 온천처럼 따뜻하다!" 계곡이 웃음소리로 가득 찼다.'},
+      {label:'입장료를 받는 관영 온천으로 만든다', fx:{gold:-20, pop:-3}, permGold:6, result:'온천장이 문전성시다. 앞으로 국고 수입이 매일 +6 늘어난다!'}]},
+
+  {id:'comet', title:'꼬리별', icon:'☄️', tag:'기연', minRank:0, weight:6,
+    text:'밤하늘에 붉은 꼬리별이 나타났사옵니다.\n천문관은 길조라 하고, 무당은 흉조라 하고, 백성은 그저 목을 빼고 구경 중이옵니다.',
+    choices:[
+      {label:'"홍학의 별이니 길조다" 선포한다', fx:{prestige:8, pop:6}, result:'별에 "홍련성(紅蓮星)"이라는 이름이 붙었다. 그날 밤 태어난 아기들 이름이 죄다 별이가 되었다.'},
+      {label:'만일에 대비해 곳간을 점검한다', fx:{gold:-15, food:15}, result:'별일은 없었지만 곳간 장부가 깔끔해졌다. 이것도 수확이라면 수확.'},
+      {label:'천문대를 세워 연구시킨다', fx:{gold:-40, prestige:8}, result:'관측 기록이 사서에 남았다. 훗날 학자들이 "홍련성 관측록"을 보물로 여기게 된다.'}]},
+
+  {id:'smuggler', title:'밀수선 나포', icon:'⛵', tag:'치안', minRank:1, weight:7,
+    text:'해안 경비대가 밀수선을 나포했사옵니다.\n짐칸에는 관세를 물지 않은 향신료와 보석이 가득하옵니다.',
+    choices:[
+      {label:'전량 몰수하여 국고에 넣는다', fx:{gold:70, pop:-4}, result:'국고가 두둑해졌다. 상인들 사이에 "홍학 세관 무섭다"는 소문이 돌았다.'},
+      {label:'공개 재판으로 엄히 다스린다', fx:{gold:35, pop:8, prestige:6}, result:'법 앞에 만인이 평등함을 보였다. 밀수가 뚝 끊겼다.'},
+      {label:'뒷돈을 받고 눈감는다', fx:{gold:45}, hfx:{pop:-9}, flag:'guildDirt', result:'조용히 처리했다. …조용했을까?'}]},
+
+  {id:'inspector', title:'암행어사 파견', icon:'🕵️', tag:'조정', minRank:2, weight:7,
+    text:'지방 수령들의 기강이 해이하다는 첩보가 있사옵니다.\n마패를 쥐어 암행어사를 보내시겠사옵니까?',
+    choices:[
+      {label:'어사를 파견한다', fx:{gold:-40}, risky:{p:.65,
+        win:{text:'"암행어사 출두요!" 탐관오리 셋의 창고에서 착복한 세곡이 쏟아졌다.', fx:{gold:110, pop:12, prestige:8}},
+        lose:{text:'수령들이 미리 낌새를 채고 장부를 태웠다. 어사는 빈손으로 돌아왔다.', fx:{}}}},
+      {label:'지방은 지방에 맡긴다', fx:{pop:-5}, result:'"수령님 곳간만 배부르다"는 민요가 유행하기 시작했다.'}]},
+
+  {id:'nobles', title:'귀족들의 연회 청원', icon:'🥂', tag:'조정', minRank:1, weight:7,
+    text:'문벌 귀족들이 궁중 연회를 열어달라 청하옵니다.\n"국고 사정이야 저희 알 바 아니옵고…" 라는 속내가 훤히 보이옵니다.',
+    choices:[
+      {label:'연회를 베푼다', fx:{gold:-70, prestige:6}, loyal:9, result:'귀족들이 취하도록 마시고 충성을 맹세했다. 술김의 맹세도 맹세다.'},
+      {label:'연회 대신 그 돈을 백성에게 쓴다', fx:{gold:-50, pop:13}, loyal:-5, result:'귀족들은 입을 삐죽였지만, 백성들의 환호가 담장을 넘어 그들 귀에도 닿았다.'},
+      {label:'딱 잘라 거절한다', fx:{pop:4}, loyal:-7, result:'"국고는 잔칫돈이 아니니라." 귀족들이 부채로 얼굴을 가리고 물러났다.'}]},
+
+  {id:'famine', title:'이웃 나라의 기근', icon:'🍚', tag:'외교', minRank:1, weight:7, noflag:'gratefulNeighbor',
+    text:'이웃 물소국에 큰 기근이 들었다 하옵니다.\n사신이 여윈 얼굴로 곡물 원조를 청하옵니다.',
+    choices:[
+      {label:'아낌없이 원조한다', fx:{food:-60, prestige:15}, flag:'gratefulNeighbor', result:'물소국 백성들이 홍학 깃발에 절을 올렸다 한다. 은혜는 언젠가 돌아오는 법.'},
+      {label:'시세보다 비싸게 판다', fx:{food:-40, gold:60, prestige:-7}, result:'실리는 챙겼으나 "흉년 장사꾼"이라는 별명도 함께 챙겼다.'},
+      {label:'우리도 어렵다며 거절한다', fx:{prestige:-5}, result:'사신은 말없이 절하고 떠났다. 그 뒷모습이 오래 마음에 남는다.'}]},
+
+  {id:'famine2', title:'물소국의 보은', icon:'🐃', tag:'외교', minRank:1, weight:99, req:'gratefulNeighbor', once:true,
+    text:'물소국의 수레 행렬이 국경을 넘어왔사옵니다.\n"그때의 은혜, 풍년으로 갚으러 왔소이다!"',
+    choices:[
+      {label:'기쁘게 받는다', fx:{food:80, gold:40, prestige:8}, clearFlag:'gratefulNeighbor', result:'곡물과 특산 치즈가 수레 가득. 두 나라의 우애가 반석 위에 올랐다.'}]},
+
+  {id:'warhorse', title:'군마 상인', icon:'🐎', tag:'군무', minRank:1, weight:8,
+    text:'북방의 말 장수가 준마 서른 필을 끌고 왔사옵니다.\n"홍학 기병대라… 그림이 좀 이상하긴 해도, 강할 것이옵니다."',
+    choices:[
+      {label:'제값 주고 산다', fx:{gold:-80, army:30}, result:'홍학 기병대 창설! 분홍 깃털이 말갈기와 함께 휘날린다. 적들은 웃다가 진다.'},
+      {label:'반값을 부른다', risky:{p:.5,
+        win:{text:'말 장수가 여제의 배포에 반해 반값에 넘겼다. "다음에 또 옵죠!"', fx:{gold:-40, army:30}},
+        lose:{text:'말 장수가 코웃음 치며 떠났다. 옆 나라 군벌이 그 말을 다 사갔다고 한다.', fx:{prestige:-4}}}},
+      {label:'말보다 밥이 먼저다', result:'말 장수는 떠났다. 병조판서가 마구간을 보며 한숨 쉬었다.'}]},
+
+  {id:'deserter', title:'탈영병', icon:'🏃', tag:'군무', minRank:1, weight:7,
+    text:'병사 몇이 야음을 틈타 달아나다 붙잡혔사옵니다.\n"어머니가 편찮으시어…" 고개를 못 들고 있사옵니다.',
+    choices:[
+      {label:'사정을 듣고 휴가를 내린다', fx:{pop:8, army:4}, result:'"이런 군대라면 목숨 바칠 만하다!" 오히려 자원 입대가 늘었다.'},
+      {label:'군법대로 곤장을 친다', fx:{prestige:5, pop:-6}, result:'군기는 섰다. 다만 병영의 노랫소리도 함께 사라졌다.'}]},
+
+  {id:'armory', title:'무기고 화재', icon:'🧨', tag:'위기', minRank:1, weight:6,
+    text:'한밤중 무기고에서 불길이 치솟았사옵니다!\n창검이 녹기 전에 손을 써야 하옵니다.',
+    choices:[
+      {label:'직접 진화를 지휘한다', risky:{p:.6,
+        win:{text:'여제가 물동이를 나르는 모습에 모두가 뛰어들었다. 무기고를 지켜냈다!', fx:{prestige:12, pop:8, army:-3}},
+        lose:{text:'불길이 너무 거셌다. 무기 태반이 재가 되었으나, 진화에 앞장선 여제의 모습만은 남았다.', fx:{army:-20, pop:5}}}},
+      {label:'안전하게 물러나 소방을 맡긴다', fx:{gold:-40, army:-12}, result:'절반은 건졌다. 방화범은 오리무중이다.'}]},
+
+  {id:'maids', title:'궁녀들의 다툼', icon:'🎀', tag:'궁중', minRank:0, weight:7,
+    text:'침방 궁녀 둘이 머리채를 잡았사옵니다.\n발단은 "여제 폐하의 깃털 손질 당번" 자리라 하옵니다.',
+    choices:[
+      {label:'공정하게 가려 판결한다', fx:{pop:5, prestige:4}, result:'명판결! "당번은 격일제, 빗은 두 개." 솔로몬… 아니 홍련의 지혜라 불렸다.'},
+      {label:'둘 다 벌을 내린다', fx:{pop:-5}, result:'궁이 조용해졌다. 지나치게 조용해졌다.'},
+      {label:'비단을 내려 화해시킨다', fx:{gold:-30, pop:9}, result:'두 궁녀가 얼싸안고 울었다. 비단의 힘은 위대하다.'}]},
+
+  {id:'festival', title:'홍학 축제', icon:'🏮', tag:'민심', minRank:0, weight:8,
+    text:'개국 기념일이 다가오옵니다.\n백성들이 홍학등(紅鶴燈)을 만들며 축제를 기다리고 있사옵니다.',
+    choices:[
+      {label:'국중 대축제를 연다', fx:{gold:-60, pop:18, prestige:8}, result:'분홍 등불 만 개가 밤하늘을 물들였다. 그 밤만큼은 온 천하가 홍학의 것이었다.'},
+      {label:'조촐한 등불 행사만 한다', fx:{gold:-20, pop:8}, result:'소박했지만 정겨웠다. 아이들의 등불 행렬이 강물처럼 흘렀다.'},
+      {label:'올해는 취소한다', fx:{pop:-11}, result:'만들다 만 등불들이 처마 밑에서 비를 맞았다.'}]},
+
+  {id:'mudfish', title:'미꾸라지 대풍', icon:'🐟', tag:'길조', minRank:0, weight:8,
+    text:'습지에 미꾸라지가 넘쳐나옵니다!\n홍학국 제일의 진미가 그물마다 그득하옵니다.',
+    choices:[
+      {label:'왕실 수라간에 진상시킨다', fx:{food:40, pop:-3}, result:'추어탕이 사흘 내리 수라상에 올랐다. 여제의 깃털이 한층 붉어졌다.'},
+      {label:'백성과 나눈다', fx:{food:20, pop:12}, result:'온 나라 가마솥에서 추어탕이 끓었다. 구수한 냄새가 국경을 넘을 지경.'},
+      {label:'말려서 수출한다', fx:{gold:55, food:10}, result:'"홍학국 건미꾸라지"가 서역에서 대박이 났다.'}]},
+
+  {id:'herons', title:'백로 사절단', icon:'🕊️', tag:'외교', minRank:2, weight:6,
+    text:'먼 친척뻘 되는 백로국 사절단이 왔사옵니다.\n"같은 물새끼리 잘 지내봅시다"라며 은근히 결연을 청하옵니다.',
+    choices:[
+      {label:'물새 동맹을 맺는다', fx:{gold:-50, prestige:10, army:10}, result:'홍학과 백로가 나란히 서니 강가가 든든하다. 두루미국이 샘을 냈다.'},
+      {label:'차만 대접해 보낸다', fx:{gold:-10, prestige:2}, result:'"찻잔 문양이 곱군요…" 사절단은 아쉬움을 안고 돌아갔다.'}]},
+
+  {id:'goldmine', title:'금광 소문', icon:'⛏️', tag:'유혹', minRank:2, weight:6,
+    text:'서쪽 바위산에서 금맥이 발견됐다는 소문이옵니다.\n다만 소문의 출처가 "술 취한 오소리"라는 게 마음에 걸리옵니다.',
+    choices:[
+      {label:'채굴대를 크게 꾸린다', fx:{gold:-100}, risky:{p:.45,
+        win:{text:'진짜였다! 오소리 만세! 금맥에서 금덩이가 쏟아진다!', fx:{gold:280, prestige:15}},
+        lose:{text:'황철석(바보의 금)이었다. 오소리는 이미 국경을 넘은 뒤였다.', fx:{pop:-5}}}},
+      {label:'소규모 탐사만 보낸다', fx:{gold:-30}, risky:{p:.45,
+        win:{text:'작은 금맥을 확인했다. 크게 벌진 못해도 쏠쏠하다.', fx:{gold:90}},
+        lose:{text:'바위산엔 바위뿐이었다. 탐사대는 산나물만 캐왔다.', fx:{food:10}}}},
+      {label:'소문에 국고를 걸 수 없다', result:'훗날 그 산에서 정말 금이 나왔는지는… 사서에 기록이 없다.'}]},
+
+  {id:'bard', title:'음유시인의 찬가', icon:'🎻', tag:'민심', minRank:0, weight:7,
+    text:'떠돌이 음유시인이 여제를 위한 노래를 지었다 하옵니다.\n제목은 <외다리로 서서 천하를 보네>.',
+    choices:[
+      {label:'궁중 악사로 후원한다', fx:{gold:-30, prestige:9, pop:5}, result:'노래가 전국에 퍼졌다. 아이들도 외다리로 서서 따라 부른다.'},
+      {label:'한 곡 청해 듣는다', fx:{gold:-5, pop:4}, result:'"…생각보다 명곡이었다." 여제가 앙코르를 청했다는 후문.'},
+      {label:'가사 검열을 지시한다', fx:{pop:-8}, result:'시인은 국경을 넘어갔고, 노래는 금지곡이 되어 더 유행했다.'}]},
+
+  {id:'taxman', title:'세리의 횡령', icon:'🧾', tag:'조정', minRank:1, weight:7,
+    text:'세곡을 걷는 관리가 뒷주머니를 찼다는 고변이 들어왔사옵니다.\n장부의 먹자국이 유난히 번져 있사옵니다.',
+    choices:[
+      {label:'공개 문초하고 재산을 몰수한다', fx:{gold:60, pop:9, prestige:5}, result:'착복한 세곡이 백성에게 돌아갔다. 세리들의 붓끝이 갑자기 정직해졌다.'},
+      {label:'조용히 회수하고 좌천시킨다', fx:{gold:40}, result:'시끄럽지 않게 처리했다. 다만 "윗분들은 봐준다더라"는 말이 남았다.'},
+      {label:'증거 불충분으로 덮는다', hfx:{pop:-9}, result:'그 세리가 석 달 뒤 기와집을 올렸다. 백성들이 그 집을 보며 침을 뱉는다.'}]},
+
+  {id:'reservoir', title:'저수지 축조 상소', icon:'🏗️', tag:'조정', minRank:1, weight:6, once:true,
+    text:'거북이 학사가 백 장짜리 상소를 올렸사옵니다.\n요지는 한 줄: "저수지를 파면 가뭄 걱정이 없사옵니다."',
+    choices:[
+      {label:'대공사를 윤허한다', fx:{gold:-90, pop:5}, permFood:8, result:'"홍련보(紅蓮洑)"가 완공됐다. 앞으로 식량 수입이 매일 +8 늘어난다!'},
+      {label:'국고 사정상 보류한다', loyal:-4, result:'학사가 상소문을 도로 말며 중얼거렸다. "백 장인데…"'}]},
+
+  {id:'library', title:'서고 확장', icon:'📚', tag:'조정', minRank:2, weight:6, once:true,
+    text:'왕실 서고가 비좁아 죽간이 복도까지 쌓였사옵니다.\n학사들이 책 더미에 깔릴 뻔한 게 이달만 세 번째이옵니다.',
+    choices:[
+      {label:'대서고를 짓는다', fx:{gold:-60, prestige:12}, loyal:6, result:'"홍문관(紅文館)"이 섰다. 천하의 책이 모이는 곳엔 천하의 인재도 모인다.'},
+      {label:'책을 백성에게 나눠준다', fx:{pop:10, prestige:4}, result:'저잣거리에 글 읽는 소리가 늘었다. 나쁘지 않은 결말.'}]},
+
+  {id:'duel', title:'도발의 서찰', icon:'✉️', tag:'외교', minRank:2, weight:6,
+    text:'이웃 영주가 무례한 서찰을 보냈사옵니다.\n"분홍 새가 왕 노릇이라니, 우습군. 담력이 있다면 사냥 시합으로 겨루자."',
+    choices:[
+      {label:'시합에 응해 본때를 보인다', risky:{p:.55,
+        win:{text:'여제의 부리가 번개처럼 물고기를 낚아챘다. 영주는 빈 그물을 들고 얼굴이 벌게졌다.', fx:{prestige:16, pop:8}},
+        lose:{text:'영주의 사냥개가 한 수 위였다. 분하지만 깨끗이 승복했다. 그 모습에 오히려 호평이…', fx:{prestige:-5, pop:4}}}},
+      {label:'서찰을 무시한다', fx:{prestige:-6}, result:'"겁먹었나 보군"이라는 후속 서찰이 왔다. 부아가 치민다.'},
+      {label:'우아한 조롱시로 답장한다', risky:{p:.5,
+        win:{text:'답장의 시가 명문이라 천하에 회자됐다. 영주는 붓을 꺾었다고 한다.', fx:{prestige:12}},
+        lose:{text:'운율이 하나 어긋난 것을 상대가 물고 늘어졌다. 문인들 사이에 논쟁만 남았다.', fx:{}}}}]},
+
+  {id:'dance', title:'홍학 대군무', icon:'💃', tag:'길조', minRank:0, weight:6,
+    text:'철따라 이동하는 야생 홍학 수천 마리가 습지에 내려앉았사옵니다.\n장관을 보러 백성들이 습지로 몰려들고 있사옵니다.',
+    choices:[
+      {label:'여제도 군무에 합류한다', fx:{pop:13, prestige:7}, result:'수천 홍학의 한가운데서 춤추는 여제. 화공들이 밤새 그 장면을 그렸다.'},
+      {label:'관람석을 만들어 구경값을 받는다', fx:{gold:45, pop:-4}, result:'장사는 잘됐다. 낭만은 조금 팔았지만.'},
+      {label:'습지를 보호구역으로 선포한다', fx:{prestige:9, pop:4}, result:'홍학들이 해마다 찾아오는 명소가 되었다. 긴 안목의 한 수.'}]},
+
+  {id:'granary', title:'의창(義倉) 설치 건의', icon:'🏚️', tag:'조정', minRank:2, weight:6, once:true,
+    text:'호조에서 흉년에 대비한 의창 설치를 건의하옵니다.\n"평시에 쌓고 흉년에 푸는 것이 나라의 도리이옵니다."',
+    choices:[
+      {label:'전국에 의창을 세운다', fx:{gold:-70, food:-30, pop:12, prestige:10}, result:'백성들이 의창 앞을 지날 때마다 안심한다. 민심이 반석 위에 올랐다.'},
+      {label:'도성에만 시범 설치한다', fx:{gold:-30, pop:5}, result:'작게 시작했다. 씨앗은 뿌려졌다.'}]},
+
+  {id:'physician', title:'명의의 귀순', icon:'🌿', tag:'기연', minRank:2, weight:5, once:true,
+    text:'이웃 나라의 명의가 망명을 청해 왔사옵니다.\n"그 나라 왕은 약보다 아첨을 좋아하더이다."',
+    choices:[
+      {label:'후히 맞아들인다', fx:{gold:-40, pop:8, prestige:8}, result:'명의가 백성을 무료로 진료하니 칭송이 자자하다. 이웃 왕은 배가 아프다고 한다. 의원이 없어서 큰일이다.'},
+      {label:'첩자일지 모르니 돌려보낸다', fx:{prestige:-4}, result:'진짜 명의였다. 다른 나라가 냉큼 모셔갔다.'}]},
+
+  {id:'oldsoldier', title:'노병의 청원', icon:'🎖️', tag:'군무', minRank:1, weight:6,
+    text:'선대부터 봉직한 백발의 노병이 아뢰옵니다.\n"소인 이제 창이 무겁사옵니다. 고향에서 여생을…"',
+    choices:[
+      {label:'연금과 땅을 내려 예우한다', fx:{gold:-40, army:-3, pop:8}, loyal:6, result:'"홍학국은 병사를 버리지 않는다." 이 소문 하나가 신병 백 명의 값을 했다.'},
+      {label:'후학 양성 교관으로 모신다', fx:{gold:-20, army:8}, result:'노병의 창술 교본이 병영의 보물이 됐다. 신병들의 눈빛이 달라졌다.'},
+      {label:'아직 나라가 그대를 필요로 한다', fx:{army:2, pop:-5}, result:'노병은 말없이 창을 다시 들었다. 그 뒷모습에 병영이 숙연해졌다.'}]},
+
+  {id:'winery', title:'어주(御酒) 개발', icon:'🍶', tag:'궁중', minRank:2, weight:6, once:true,
+    text:'수라간에서 붉은 열매로 빚은 새 술을 진상하였사옵니다.\n빛깔이 꼭 홍학 깃털 같사옵니다.',
+    choices:[
+      {label:'"홍학주"로 명명하고 전매한다', fx:{gold:-30}, permGold:8, result:'홍학주가 불티나게 팔린다. 앞으로 국고 수입이 매일 +8 늘어난다!'},
+      {label:'왕실 연회 전용으로 아껴둔다', fx:{prestige:6}, result:'"여제의 술"은 마셔본 자가 없어 더 유명해졌다.'}]},
+
+  {id:'orphans', title:'전쟁 고아들', icon:'🧒', tag:'민심', minRank:1, weight:7,
+    text:'국경 분쟁으로 부모를 잃은 아이들이 도성에 흘러들었사옵니다.\n작은 손들이 저잣거리에서 떨고 있사옵니다.',
+    choices:[
+      {label:'왕실 직영 보육원을 세운다', fx:{gold:-60, pop:14, prestige:8}, result:'훗날 이 아이들 중에서 명장과 명재상이 나온다. 오늘의 온정이 내일의 기둥이 된다.'},
+      {label:'절에 맡기고 시주한다', fx:{gold:-25, pop:6}, result:'스님들이 아이들을 거두었다. 목탁 소리가 한결 따뜻해졌다.'},
+      {label:'각 고을에 떠넘긴다', fx:{pop:-9}, result:'아이들은 뿔뿔이 흩어졌다. 그 눈망울들이 꿈에 나온다.'}]},
+
+  {id:'mirror', title:'서역의 유리 거울', icon:'🪞', tag:'유혹', minRank:2, weight:6,
+    text:'사람 전신이 다 비치는 서역제 유리 거울이 진상되었사옵니다.\n값이 어지간한 고을 일 년 세곡과 맞먹사옵니다.',
+    choices:[
+      {label:'값을 치르고 어전에 둔다', fx:{gold:-70, prestige:10}, result:'거울에 비친 위엄 넘치는 자태. 조회 전 매무새를 다듬는 여제의 새 의식이 생겼다.'},
+      {label:'"짐의 거울은 백성이다" 돌려보낸다', fx:{pop:10, prestige:6}, result:'이 한마디가 상인의 입을 타고 천하에 퍼졌다. 거울값보다 비싼 명성을 얻었다.'}]},
+
+  /* === 체인: 수상한 두루마리 === */
+  {id:'scroll1', title:'수상한 두루마리', icon:'🗺️', tag:'기연', rare:true, minRank:1, weight:5, once:true, noflag:'scroll1',
+    text:'넝마를 걸친 족제비 행상이 낡은 두루마리를 내밀었사옵니다.\n"선대 여왕의 보물 지도올시다. 반쪽뿐이지만… 싸게 드리리다."',
+    choices:[
+      {label:'사들인다', fx:{gold:-50}, flag:'scroll1', result:'두루마리엔 습지 남쪽의 지형이 그려져 있다. 나머지 반쪽은 어디에…?'},
+      {label:'사기꾼이다, 물리쳐라', result:'족제비는 어깨를 으쓱하며 사라졌다. 정말 사기였을까? 이제 알 길이 없다.'}]},
+
+  {id:'scroll2', title:'두루마리의 나머지 반쪽', icon:'🧩', tag:'기연', rare:true, minRank:1, weight:20, req:'scroll1', once:true,
+    text:'서고를 정리하던 학사가 소리쳤사옵니다.\n"폐하! 선대의 문갑에서 이런 것이…!"\n그 두루마리의 나머지 반쪽이옵니다. 지도가 완성되었사옵니다!',
+    choices:[
+      {label:'탐사대를 꾸린다', fx:{gold:-60}, flag:'scroll2', clearFlag:'scroll1', result:'지도가 가리키는 곳은 습지 남쪽의 오래된 동굴. 탐사대가 횃불을 들었다.'},
+      {label:'불길하니 두루마리를 봉인한다', clearFlag:'scroll1', result:'지도는 다시 문갑 깊숙이 잠들었다. 보물도, 저주도, 영원히.'}]},
+
+  {id:'scroll3', title:'선대 여왕의 동굴', icon:'💎', tag:'기연', rare:true, minRank:1, weight:20, req:'scroll2', once:true,
+    text:'탐사대가 동굴 깊은 곳에서 거대한 석문을 발견했사옵니다.\n문에는 홍학 문양과 함께 이런 글귀가…\n"열려면 열어라. 다만 각오는 하고."',
+    choices:[
+      {label:'석문을 연다', clearFlag:'scroll2', risky:{p:.6,
+        win:{text:'황금과 진주가 산을 이뤘다! 선대 여왕의 유산이 후손의 품에 돌아왔다.\n구석의 석판엔 "잘 쓰거라"라고 적혀 있었다.', fx:{gold:300, prestige:35}},
+        lose:{text:'와르르! 함정이 발동해 동굴이 무너졌다. 탐사대는 가까스로 탈출했지만 병사들이 다쳤다.\n먼지 속에서 건진 것은 금가락지 하나뿐.', fx:{army:-20, gold:30}}}},
+      {label:'열지 않고 사당을 세워 모신다', clearFlag:'scroll2', fx:{gold:-30, prestige:12, pop:6}, result:'선대의 잠을 지켜드리기로 했다. 사당의 향불이 꺼지지 않으니 민심이 그윽해졌다.'}]},
+
+  /* === 체인: 붉은 달 === */
+  {id:'redmoon1', title:'붉은 달', icon:'🌕', tag:'기연', rare:true, minRank:2, weight:5, once:true, noflag:'redmoonCalm',
+    text:'보름달이 핏빛으로 물들었사옵니다.\n"홍학의 하늘이 노하셨다"며 백성들이 웅성거리옵니다.',
+    choices:[
+      {label:'천제(天祭)를 올려 달랜다', fx:{gold:-50, pop:8}, flag:'redmoonCalm', result:'제사의 연기가 하늘에 닿자 달빛이 서서히 돌아왔다. 민심도 함께 가라앉았다.'},
+      {label:'"달은 원래 가끔 붉다" 방을 붙인다', flag:'redmoonCult', result:'천문학적으로는 옳았다. 하지만 민심은 천문학으로 움직이지 않는다…'}]},
+
+  {id:'redmoon2', title:'붉은 달 광신도', icon:'🔮', tag:'위기', rare:true, minRank:2, weight:20, req:'redmoonCult', once:true,
+    text:'"붉은 달이 새 세상을 연다"는 사교(邪敎)가 창궐했사옵니다.\n교주는 스스로를 "달의 홍학"이라 칭하며 백성을 현혹하옵니다.',
+    choices:[
+      {label:'토벌군을 보낸다', clearFlag:'redmoonCult', risky:{p:.6,
+        win:{text:'소굴을 급습하니 교주는 달아나다 제 두건에 걸려 넘어졌다. 백성들이 제정신을 차렸다.', fx:{prestige:10, pop:8, army:-5}},
+        lose:{text:'교주는 놓쳤고, 토벌 과정에서 민가가 상했다. 사교는 지하로 숨었다.', fx:{army:-10, pop:-8}}}},
+      {label:'교리 논쟁으로 교주를 굴복시킨다', clearFlag:'redmoonCult', risky:{p:.5,
+        win:{text:'어전 대논쟁 끝에 교주가 말문이 막혔다. "달의 홍학"은 그날로 폐업했다.', fx:{prestige:15, pop:10}},
+        lose:{text:'교주의 궤변이 의외로 유창했다. 논쟁은 무승부… 신도가 더 늘었다. 결국 조용히 해산시키는 데 국고가 들었다.', fx:{gold:-60}}}}]},
+
+  /* === 체인: 길드의 협박 === */
+  {id:'blackmail', title:'길드의 협박장', icon:'🕸️', tag:'위기', rare:true, minRank:0, weight:25, req:'guildDirt', once:true,
+    text:'상인 길드에서 밀서가 왔사옵니다.\n"그날 밤의 상자를 기억하시옵니까? 세상이 알면 곤란하시겠지요.\n입막음값은… 후하게 쳐주시옵소서."',
+    choices:[
+      {label:'입막음값을 치른다', fx:{gold:-120}, clearFlag:'guildDirt', result:'금궤가 나가고 침묵이 왔다. 그러나 목에 걸린 가시는 그대로다.'},
+      {label:'만천하에 먼저 자백한다', fx:{pop:-10, prestige:-8}, clearFlag:'guildDirt', result:'"짐이 부덕했다." 백성들은 실망했으나, 스스로 밝힌 용기만은 인정받았다. 길드의 패는 휴지가 됐다.'},
+      {label:'역으로 길드의 비리를 캔다', clearFlag:'guildDirt', risky:{p:.5,
+        win:{text:'길드의 장부에서 탈세 기록이 쏟아졌다! 협박하러 왔던 자가 오라를 받고 끌려갔다.', fx:{gold:150, prestige:10}},
+        lose:{text:'길드가 한발 빨랐다. 소문이 저잣거리에 쫙 퍼졌다.', fx:{pop:-14, prestige:-10}}}}]},
+];
+
+/* betrayal event template (동적 생성) */
+const BETRAYAL_EVENT = {
+  id:'betrayal', title:'간신의 그림자', icon:'🐍', tag:'위기', rare:true,
+  text:'', /* filled at runtime */
+};
+
+/* ---------- flamingo empress portrait (SVG) ---------- */
+const FLAMINGO_SVG = `
+<svg viewBox="0 0 240 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="플라밍고 여제 홍련">
+  <defs>
+    <radialGradient id="fgHalo" cx="50%" cy="40%" r="58%">
+      <stop offset="0%" stop-color="#ffd98a" stop-opacity=".95"/>
+      <stop offset="55%" stop-color="#f0b25c" stop-opacity=".3"/>
+      <stop offset="100%" stop-color="#f0b25c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fgRobe" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a12b41"/>
+      <stop offset="55%" stop-color="#7c1c30"/>
+      <stop offset="100%" stop-color="#521021"/>
+    </linearGradient>
+    <linearGradient id="fgNeck" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffb3c4"/>
+      <stop offset="60%" stop-color="#f2879f"/>
+      <stop offset="100%" stop-color="#d9647f"/>
+    </linearGradient>
+    <linearGradient id="fgGold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffedb0"/>
+      <stop offset="50%" stop-color="#e3b04b"/>
+      <stop offset="100%" stop-color="#a87724"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="120" cy="128" r="98" fill="url(#fgHalo)"/>
+  <g fill="#e3b04b" opacity=".8">
+    <path d="M120 22 l5 14 -5 5 -5 -5 z"/>
+    <path d="M78 34 l8 11 -3 6 -7 -3 z"/>
+    <path d="M162 34 l-8 11 3 6 7 -3 z"/>
+    <path d="M50 62 l11 8 -1 7 -8 -1 z"/>
+    <path d="M190 62 l-11 8 1 7 8 -1 z"/>
+  </g>
+
+  <!-- imperial robe -->
+  <path d="M44 292 C46 216 76 186 120 182 C164 186 194 216 196 292 Z" fill="url(#fgRobe)" stroke="#e3b04b" stroke-width="3.5"/>
+  <path d="M58 292 C62 244 84 220 120 216 C156 220 178 244 182 292" fill="none" stroke="#e3b04b" stroke-width="1.6" opacity=".55"/>
+  <!-- collar V -->
+  <path d="M88 190 L120 244 L152 190" fill="none" stroke="#e3b04b" stroke-width="6" stroke-linecap="round"/>
+  <path d="M95 188 L120 230 L145 188" fill="none" stroke="#ffedb0" stroke-width="2" opacity=".8"/>
+  <!-- shoulder cloud motifs -->
+  <g fill="none" stroke="#ffd98a" stroke-width="2.4" opacity=".75" stroke-linecap="round">
+    <path d="M64 232 q8 -12 20 -6 q-2 -12 12 -12"/>
+    <path d="M176 232 q-8 -12 -20 -6 q2 -12 -12 -12"/>
+  </g>
+  <!-- belt medallion -->
+  <circle cx="120" cy="258" r="14" fill="url(#fgGold)" stroke="#8a5d1d" stroke-width="2"/>
+  <path d="M120 250 l3.5 5.5 6 .8 -4.4 4.4 1.2 6.2 -6.3 -3.2 -6.3 3.2 1.2 -6.2 -4.4 -4.4 6 -.8 z" fill="#7c1c30"/>
+
+  <!-- neck (S curve) -->
+  <path d="M128 190 C170 172 176 122 148 98 C130 82 108 88 104 104 C101 116 110 124 120 122"
+        fill="none" stroke="url(#fgNeck)" stroke-width="21" stroke-linecap="round"/>
+  <!-- head -->
+  <circle cx="112" cy="106" r="25" fill="#f8a2b8"/>
+  <path d="M112 81 a25 25 0 0 1 12 47 a30 30 0 0 0 -12 -47z" fill="#e87e99" opacity=".6"/>
+  <!-- beak -->
+  <path d="M90 110 C74 111 60 118 52 130 C64 132 80 128 90 121 Z" fill="#f6c2cf"/>
+  <path d="M66 121 C60 124 55 127 52 130 C58 131 66 130 72 127 Z" fill="#2b1a12"/>
+  <path d="M90 110 C82 111 72 114 64 119" fill="none" stroke="#d9647f" stroke-width="1.6" opacity=".8"/>
+  <!-- eye -->
+  <circle cx="106" cy="100" r="4.6" fill="#2b1a12"/>
+  <circle cx="104.5" cy="98.4" r="1.6" fill="#fff"/>
+  <!-- blush -->
+  <ellipse cx="121" cy="112" rx="6" ry="3.6" fill="#ff8fae" opacity=".55"/>
+
+  <!-- phoenix crown -->
+  <g>
+    <path d="M89 86 Q112 70 135 86 L131 72 Q112 58 93 72 Z" fill="url(#fgGold)" stroke="#8a5d1d" stroke-width="1.6"/>
+    <path d="M108 63 L112 44 L116 63 Z" fill="url(#fgGold)" stroke="#8a5d1d" stroke-width="1.4"/>
+    <circle cx="112" cy="42" r="4.5" fill="#ff6f8f" stroke="#8a5d1d" stroke-width="1.2"/>
+    <path d="M95 70 L90 56 L101 66 Z" fill="url(#fgGold)" stroke="#8a5d1d" stroke-width="1.2"/>
+    <path d="M129 70 L134 56 L123 66 Z" fill="url(#fgGold)" stroke="#8a5d1d" stroke-width="1.2"/>
+    <circle cx="90" cy="55" r="3" fill="#ff6f8f" stroke="#8a5d1d" stroke-width="1"/>
+    <circle cx="134" cy="55" r="3" fill="#ff6f8f" stroke="#8a5d1d" stroke-width="1"/>
+    <!-- dangling bead strings -->
+    <g stroke="#e3b04b" stroke-width="1.4">
+      <line x1="91" y1="84" x2="87" y2="97"/><line x1="133" y1="84" x2="137" y2="97"/>
+    </g>
+    <circle cx="87" cy="100" r="2.6" fill="#ffedb0"/><circle cx="137" cy="100" r="2.6" fill="#ffedb0"/>
+  </g>
+</svg>`;
+/* ============================================================
+   ENGINE
+   ============================================================ */
+const $  = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const rnd = (a,b)=>a+Math.random()*(b-a);
+const ri  = (a,b)=>Math.floor(rnd(a,b+1));
+const fmt = n => Math.round(n).toLocaleString('ko-KR');
+const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- audio (WebAudio, no assets) ---------- */
+let AC = null;
+let muted = localStorage.getItem(MUTE_KEY) === '1';
+function ctx(){
+  if(muted) return null;
+  if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ AC=null; } }
+  if(AC && AC.state==='suspended'){ AC.resume().catch(()=>{}); }
+  return AC;
+}
+function tone(f0,f1,dur,type,vol,delay=0){
+  const a = ctx(); if(!a) return;
+  try{
+    const t = a.currentTime + delay;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0,t);
+    if(f1 && f1!==f0) o.frequency.exponentialRampToValueAtTime(f1, t+dur);
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol, t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t+dur+0.05);
+  }catch(e){}
+}
+function noiseBurst(dur,vol,delay=0,freq=300){
+  const a = ctx(); if(!a) return;
+  try{
+    const t = a.currentTime + delay;
+    const len = Math.max(1, Math.floor(a.sampleRate*dur));
+    const buf = a.createBuffer(1,len,a.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
+    const src = a.createBufferSource(); src.buffer = buf;
+    const f = a.createBiquadFilter(); f.type='lowpass'; f.frequency.value=freq;
+    const g = a.createGain(); g.gain.setValueAtTime(vol,t);
+    src.connect(f).connect(g).connect(a.destination); src.start(t);
+  }catch(e){}
+}
+const SFX = {
+  tap(){ tone(660,440,.07,'triangle',.05); },
+  coin(){ tone(1150,1650,.09,'triangle',.12); tone(1500,2100,.11,'triangle',.1,.07); },
+  chime(){ [523,659,784].forEach((f,i)=>tone(f,f,.35,'sine',.09,i*.09)); },
+  bad(){ tone(300,170,.3,'sawtooth',.07); tone(220,120,.4,'sawtooth',.06,.12); },
+  gong(){ tone(196,130,2.2,'sine',.3); tone(392,260,1.6,'sine',.12,.02); tone(587,390,1.1,'triangle',.05,.04); },
+  drums(){ for(let i=0;i<6;i++){ noiseBurst(.16,.35,i*.19,220); tone(90,55,.15,'sine',.3,i*.19); } },
+  win(){ [523,659,784,1047].forEach((f,i)=>tone(f,f,.4,'triangle',.12,i*.11)); },
+  lose(){ [392,330,262,196].forEach((f,i)=>tone(f,f,.4,'sine',.1,i*.13)); },
+};
+
+/* ---------- state ---------- */
+let S = null;
+let DEBUG = false;
+const shown = {gold:null, food:null, pop:null, army:null};
+const tickers = {};
+
+function newState(){
+  return {
+    v:1, day:1, gold:120, food:120, pop:55, army:30, prestige:0, rank:0,
+    permGold:0, permFood:0,
+    ministers:{},               // id -> {lv, loy}
+    owned:{home:true},
+    flags:{}, seen:{},
+    log:[{d:1, t:'몰락한 홍학 가문의 외동딸 홍련, 습지의 작은 장원에서 조정을 열다.'}],
+    stats:{won:0, lost:0, events:0, drafted:0},
+    endless:false, unified:false,
+  };
+}
+function richState(){
+  const s = newState();
+  Object.assign(s, {day:58, gold:1450, food:920, pop:74, army:520, prestige:1650, rank:4});
+  s.ministers = {
+    owl:{lv:5,loy:78}, turtle:{lv:4,loy:66}, tiger:{lv:5,loy:81}, peacock:{lv:3,loy:59},
+    fox:{lv:3,loy:72}, crane:{lv:2,loy:64}, cat:{lv:1,loy:90}, elephant:{lv:2,loy:24},
+  };
+  ['home','reed','coral','bamboo','birch','canyon','desert'].forEach(id=>s.owned[id]=true);
+  s.stats = {won:6, lost:1, events:57, drafted:14};
+  s.log = [
+    {d:57, t:'황금 사막을 평정하다. 하이에나 여왕이 세 번 웃고 한 번 울며 항복하다.'},
+    {d:55, t:'홍학 축제를 성대히 열다. 분홍 등불 만 개가 하늘을 덮다.'},
+    {d:52, t:'암행어사가 탐관오리 셋을 잡아들이다.'},
+    {d:49, t:'검은 협곡의 악어 군벌을 토벌하다.'},
+    {d:45, t:'여왕 즉위식을 거행하다. 만조백관이 하례를 올리다.'},
+  ];
+  return s;
+}
+function save(){
+  if(DEBUG) return;
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){}
+}
+function loadSave(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(!s || typeof s.day!=='number') return null;
+    return Object.assign(newState(), s);
+  }catch(e){ return null; }
+}
+function clearSave(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} }
+
+/* ---------- derived helpers ---------- */
+function mLv(id){ const m=S.ministers[id]; return m? m.lv : 0; }
+function minDef(m){ return MINISTERS.find(x=>x.id===m); }
+function foxLuck(){ return Math.min(.25, mLv('fox')*.06); }
+function guardPct(){ const lv=mLv('crane'); return lv? Math.min(.4, .05+ .05*lv) : 0; }
+function tigerAtk(){ return 1 + mLv('tiger')*.06; }
+function hasSpy(){ return mLv('cat')>0; }
+function upgradeCost(md, lv){ return Math.round(md.cost * Math.pow(1.6, lv)); }
+function giftCost(md, lv){ return 50 + lv*20; }
+function draftCost(){ return {gold: 36 + Math.floor(S.army/6), food: 30}; }
+
+/* ---------- fx / floaters ---------- */
+function spawnFloater(key, v){
+  const chip = $('#res-'+ (key==='prestige' ? 'pop' : key));
+  const host = key==='prestige' ? $('#rankstrip') : chip;
+  if(!host) return;
+  const r = host.getBoundingClientRect();
+  const f = document.createElement('div');
+  f.className = 'floater ' + (v>0?'up':'down');
+  f.textContent = (v>0?'+':'') + fmt(v) + ' ' + RES_META[key].icon;
+  f.style.left = (r.left + r.width/2 - 20 + rnd(-8,8)) + 'px';
+  f.style.top  = (r.bottom + 4) + 'px';
+  $('#fx').appendChild(f);
+  setTimeout(()=>f.remove(), 1300);
+}
+function applyFx(fx, opts={}){
+  if(!fx) return [];
+  const out = [];
+  for(const k of ['gold','food','pop','army','prestige']){
+    let v = Math.round(fx[k]||0);
+    if(!v) continue;
+    if(v<0 && k!=='prestige' && !opts.noGuard){
+      const g = guardPct();
+      if(g>0) v = Math.round(v*(1-g));
+    }
+    if(k==='pop') S.pop = clamp(S.pop+v, 0, 100);
+    else if(k==='army') S.army = Math.max(0, S.army+v);
+    else if(k==='prestige') S.prestige = Math.max(0, S.prestige+v);
+    else S[k] += v;
+    out.push([k,v]);
+  }
+  if(!opts.silent){
+    out.forEach(([k,v],i)=> setTimeout(()=>spawnFloater(k,v), i*110));
+    const goldDelta = fx.gold||0;
+    if(goldDelta>0) SFX.coin();
+  }
+  renderResources(); renderRankStrip();
+  return out;
+}
+function fxChips(list){
+  return list.map(([k,v])=>`<span class="hint-chip ${v>0?'up':'down'}">${RES_META[k].icon} ${v>0?'+':''}${fmt(v)}</span>`).join('');
+}
+
+/* ---------- rendering ---------- */
+function tickNumber(key, el, target){
+  if(shown[key]===null){ shown[key]=target; el.textContent = fmt(target); return; }
+  const from = shown[key];
+  if(from===target){ el.textContent = fmt(target); return; }
+  shown[key] = target;
+  if(tickers[key]) cancelAnimationFrame(tickers[key]);
+  const t0 = performance.now(), dur = 420;
+  const step = (t)=>{
+    const p = Math.min(1,(t-t0)/dur), e = 1-Math.pow(1-p,3);
+    el.textContent = fmt(from + (target-from)*e);
+    if(p<1) tickers[key]=requestAnimationFrame(step);
+  };
+  tickers[key]=requestAnimationFrame(step);
+}
+function renderResources(){
+  const map = {gold:S.gold, food:S.food, pop:S.pop, army:S.army};
+  for(const k in map){
+    const box = $('#res-'+k), el = box.querySelector('.v');
+    tickNumber(k, el, map[k]);
+    box.classList.toggle('low', (k==='gold'&&S.gold<60)||(k==='food'&&S.food<40)||(k==='pop'&&S.pop<=20));
+  }
+}
+function renderRankStrip(){
+  const r = RANKS[S.rank];
+  $('#rank-badge').textContent = r.icon+' '+r.name;
+  $('#day-badge').textContent = S.day+'일차';
+  const next = RANKS[S.rank+1];
+  if(next){
+    const base = r.need, span = next.need - base;
+    const pct = clamp(((S.prestige-base)/span)*100, 0, 100);
+    $('#prestige-fill').style.width = pct+'%';
+    $('#prestige-label').textContent = `위신 ${fmt(S.prestige)} / ${fmt(next.need)} → ${next.name}`;
+  }else{
+    $('#prestige-fill').style.width = '100%';
+    $('#prestige-label').textContent = `위신 ${fmt(S.prestige)} · 천하가 그대의 것`;
+  }
+}
+const COURT_LINES = [
+  '대신들이 어명을 기다리며 부복해 있사옵니다.',
+  '아침 안개가 습지를 덮었사옵니다. 오늘도 국정이 산더미이옵니다.',
+  '수라간에서 미꾸라지 굽는 냄새가 솔솔 풍겨오옵니다.',
+  '사관이 붓을 들고 폐하의 일거수일투족을 노리고 있사옵니다.',
+  '궁녀들이 폐하의 깃털이 오늘따라 곱다고 수군거리옵니다.',
+  '멀리서 북소리가 들리옵니다. 훈련이옵니다. 아마도.',
+  '어전의 촛불이 유난히 밝사옵니다. 길조이옵니다.',
+];
+function renderCourt(){
+  $('#court-scene').textContent = ['🏯','⛩️','🌅','🌙','🏮'][S.day%5];
+  $('#court-flavor').innerHTML = `<b>${RANKS[S.rank].name} 홍련</b> 폐하, ` + COURT_LINES[S.day % COURT_LINES.length];
+}
+function renderReport(lines){
+  const box = $('#daily-report');
+  if(!lines || !lines.length){
+    box.innerHTML = '<div class="report-line"><span>아직 첫 조회가 열리지 않았사옵니다.</span></div>';
+    return;
+  }
+  box.innerHTML = lines.map(l=>`<div class="report-line"><span>${l.k}</span><b class="${l.v>=0?'plus':'minus'}">${l.v>=0?'+':''}${fmt(l.v)} ${l.icon}</b></div>`).join('');
+}
+function renderLog(){
+  $('#log').innerHTML = S.log.slice(0,30).map(e=>`<li><span class="d">${e.d}일</span>${esc(e.t)}</li>`).join('');
+}
+function log(t){ S.log.unshift({d:S.day, t}); if(S.log.length>60) S.log.length=60; renderLog(); }
+
+function renderMinisters(){
+  const list = $('#minister-list');
+  list.innerHTML = '';
+  MINISTERS.forEach(md=>{
+    const st = S.ministers[md.id];
+    const locked = md.unlock > S.rank;
+    const card = document.createElement('div');
+    card.className = 'panel mcard';
+    const stars = '★'.repeat(md.stars);
+    if(st){
+      const loyWarn = st.loy < 30;
+      const contrib = md.base ? `${RES_META[md.fx]? RES_META[md.fx].icon : ''} ${md.base + md.per*(st.lv-1)}/일` : '';
+      const ucost = upgradeCost(md, st.lv);
+      const gcost = giftCost(md, st.lv);
+      card.innerHTML = `
+        <div class="mport">${md.emoji}<span class="lv">Lv.${st.lv}</span></div>
+        <div class="minfo">
+          <div class="mname">${md.name}<span class="stars">${stars}</span>${loyWarn?'<span class="warn-tag">배신 조짐!</span>':''}</div>
+          <div class="mrole">${md.role}${contrib? ' · <b>'+contrib+'</b>':''}<br>${md.quote}</div>
+          <div class="loyal"><span>충성</span><div class="bar"><div class="fill ${loyWarn?'danger':''}" style="width:${st.loy}%"></div></div><span class="lnum">${st.loy}</span></div>
+        </div>
+        <div class="mbtns">
+          <button class="btn small gold" data-up="${md.id}" ${S.gold<ucost||st.lv>=5?'disabled':''}>${st.lv>=5?'⭐ 최고위':'승급 💰'+fmt(ucost)}</button>
+          <button class="btn small pink" data-gift="${md.id}" ${S.gold<gcost?'disabled':''}>하사 💰${fmt(gcost)}</button>
+        </div>`;
+    }else{
+      card.innerHTML = `
+        <div class="mport ${locked?'locked':''}">${md.emoji}</div>
+        <div class="minfo">
+          <div class="mname">${md.name}<span class="stars">${stars}</span></div>
+          <div class="mrole">${md.role}<br>${md.quote}</div>
+        </div>
+        <div class="mbtns">
+          ${locked
+            ? `<span class="lock-tag">🔒 ${RANKS[md.unlock].name} 필요</span>`
+            : `<button class="btn small" data-recruit="${md.id}" ${S.gold<md.cost?'disabled':''}>등용 💰${fmt(md.cost)}</button>`}
+        </div>`;
+    }
+    list.appendChild(card);
+  });
+}
+
+function renderMap(){
+  const dc = draftCost();
+  $('#draft-cost').textContent = `비용: 💰${fmt(dc.gold)} · 🌾${fmt(dc.food)} → ⚔️+25`;
+  $('#btn-draft').disabled = S.gold<dc.gold || S.food<dc.food;
+  const list = $('#territory-list');
+  list.innerHTML = '';
+  TERRITORIES.forEach(t=>{
+    const owned = !!S.owned[t.id];
+    const locked = t.unlock > S.rank;
+    const card = document.createElement('div');
+    card.className = 'panel tcard' + (owned?' owned':'') + (t.boss?' boss':'');
+    const inc = `💰${t.income.gold}·🌾${t.income.food}/일`;
+    let right;
+    if(owned) right = `<span class="own-tag">${t.home?'👑 본향':'⚑ 점령'}</span>`;
+    else if(locked) right = `<span class="lock-tag">🔒 ${RANKS[t.unlock].name}</span>`;
+    else right = `<button class="btn small ${t.boss?'gold':''}" data-attack="${t.id}">⚔️ 출정</button>`;
+    card.innerHTML = `
+      <div class="mport">${t.emoji}</div>
+      <div class="tinfo">
+        <div class="tname">${t.name} ${t.boss?'<span style="color:#a8322f">— 최종 결전</span>':''}</div>
+        <div class="tlord">${owned? esc(t.desc) : '영주: '+t.lord}</div>
+        <div class="tstat">${owned? `<span>산출 <b>${inc}</b></span>` : `<span>방어 <b>🛡️${fmt(t.def)}</b></span><span>산출 <b>${inc}</b></span><span>위신 <b>+${fmt(t.prestige)}</b></span>`}</div>
+      </div>
+      <div class="mbtns">${right}</div>`;
+    list.appendChild(card);
+  });
+  const target = TERRITORIES.some(t=>!S.owned[t.id] && t.unlock<=S.rank && S.army >= t.def*1.05);
+  $('.tab[data-tab="map"]').classList.toggle('noti', target);
+}
+
+function renderProfile(){
+  $('#profile-portrait').innerHTML = FLAMINGO_SVG;
+  $('#profile-title').textContent = RANKS[S.rank].icon+' '+RANKS[S.rank].name + (S.unified?' · 천하통일':'');
+  $('#rank-road').innerHTML = RANKS.map((r,i)=>{
+    const cls = i<S.rank?'done': i===S.rank?'now':'';
+    return `<div class="rank-step ${cls}"><span class="ric">${r.icon}</span><span>${r.name}</span><span class="rneed">위신 ${fmt(r.need)}</span></div>`;
+  }).join('');
+  const nMin = Object.keys(S.ministers).length;
+  const nTer = Object.keys(S.owned).length;
+  $('#stat-grid').innerHTML = [
+    ['치세', fmt(S.day)+'일'], ['위신', fmt(S.prestige)],
+    ['등용 신하', nMin+'명'], ['영지', nTer+'/'+TERRITORIES.length],
+    ['전승', fmt(S.stats.won)+'승 '+fmt(S.stats.lost)+'패'], ['국사 처리', fmt(S.stats.events)+'건'],
+  ].map(([k,n])=>`<div class="stat-cell"><div class="k">${k}</div><div class="n">${n}</div></div>`).join('');
+}
+function renderAll(){
+  renderResources(); renderRankStrip(); renderCourt(); renderLog();
+  renderMinisters(); renderMap(); renderProfile();
+}
+
+/* ---------- toast ---------- */
+function toast(t){
+  const el = document.createElement('div');
+  el.className='toast'; el.textContent=t;
+  $('#toasts').appendChild(el);
+  setTimeout(()=>el.remove(), 2700);
+}
+
+/* ---------- tabs ---------- */
+function switchTab(name){
+  $$('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  $$('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
+  SFX.tap();
+}
+
+/* ---------- day loop ---------- */
+let busy = false;
+function collectIncome(){
+  const rep = [];
+  let gold = S.permGold, food = S.permFood, pop = 0, army = 0;
+  TERRITORIES.forEach(t=>{ if(S.owned[t.id]){ gold += t.income.gold; food += t.income.food; } });
+  rep.push({k:'영지 세곡', icon:'💰', v:gold - S.permGold});
+  rep.push({k:'영지 소출', icon:'🌾', v:food - S.permFood});
+  if(S.permGold) rep.push({k:'전매·관영 수입', icon:'💰', v:S.permGold});
+  if(S.permFood) rep.push({k:'수차·저수지 소출', icon:'🌾', v:S.permFood});
+  MINISTERS.forEach(md=>{
+    const st = S.ministers[md.id]; if(!st || !md.base) return;
+    const v = md.base + md.per*(st.lv-1);
+    if(md.fx==='gold'){ gold+=v; rep.push({k:md.name, icon:'💰', v}); }
+    if(md.fx==='food'){ food+=v; rep.push({k:md.name, icon:'🌾', v}); }
+    if(md.fx==='pop'){ pop+=v; rep.push({k:md.name, icon:'❤️', v}); }
+    if(md.fx==='army'){ army+=v; rep.push({k:md.name, icon:'⚔️', v}); }
+  });
+  const upkeep = Math.ceil(S.army/18);
+  food -= upkeep; rep.push({k:'군량 소모', icon:'🌾', v:-upkeep});
+  S.gold += gold; S.pop = clamp(S.pop+pop,0,100); S.army += army;
+  S.food += food;
+  if(S.food < 0){
+    const starve = Math.ceil(S.army*0.1);
+    S.army = Math.max(0, S.army-starve); S.food = 0;
+    S.pop = clamp(S.pop-5,0,100);
+    rep.push({k:'⚠️ 군량 부족! 병사 이탈', icon:'⚔️', v:-starve});
+    log('곳간이 비어 병사들이 굶주리다. 민심과 군심이 흔들리다.');
+    SFX.bad();
+  }
+  return rep;
+}
+function loyaltyTick(){
+  if(S.day % 3 !== 0) return;
+  const rabbit = mLv('rabbit')>0;
+  for(const id in S.ministers){
+    const st = S.ministers[id];
+    st.loy = clamp(st.loy + (rabbit ? +1 : -ri(1,4)), 0, 100);
+  }
+}
+function passDay(){
+  if(busy) return;
+  busy = true;
+  S.day++;
+  const rep = collectIncome();
+  loyaltyTick();
+  renderAll();
+  renderReport(rep);
+  SFX.tap();
+  if(S.pop<=20) toast('⚠️ 민심이 흉흉하옵니다!');
+  if(S.gold<60) toast('⚠️ 국고가 바닥을 보이옵니다…');
+  setTimeout(()=>{
+    const ev = pickEvent();
+    showEvent(ev);
+  }, 550);
+}
+
+/* ---------- event system ---------- */
+function eligibleEvents(){
+  return EVENTS.filter(e=>{
+    if((e.minRank||0) > S.rank) return false;
+    if(e.once && S.seen[e.id]) return false;
+    if(e.req && !S.flags[e.req]) return false;
+    if(e.noflag && S.flags[e.noflag]) return false;
+    if(e.needMinister && Object.keys(S.ministers).length===0) return false;
+    return true;
+  });
+}
+function pickEvent(){
+  // betrayal takes priority
+  const traitors = Object.keys(S.ministers).filter(id=>S.ministers[id].loy < 30);
+  if(traitors.length && Math.random()<.4){
+    return makeBetrayal(traitors[ri(0,traitors.length-1)]);
+  }
+  const pool = eligibleEvents();
+  const total = pool.reduce((s,e)=>s+(e.weight||10),0);
+  let roll = Math.random()*total;
+  for(const e of pool){ roll -= (e.weight||10); if(roll<=0) return e; }
+  return pool[pool.length-1];
+}
+function makeBetrayal(id){
+  const md = minDef(id);
+  return {
+    id:'betrayal', title:'간신의 그림자', icon:'🐍', tag:'위기', rare:true, dynamic:true,
+    text:`밀정의 보고이옵니다.\n<i>${md.name}</i>이(가) 야심한 밤, 검은 두건의 무리와 회동한다 하옵니다.\n충성의 깃털이 다 빠져버린 듯하옵니다…`,
+    choices:[
+      {label:'하사품으로 마음을 돌린다', fx:{gold:-100},
+        act(){ S.ministers[id].loy = 65; return {text:`${md.name}이(가) 하사품 앞에 엎드려 통곡하였다.\n"소신이 잠시 눈이 멀었나이다!" 충성도가 회복되었다.`}; }},
+      {label:'관직을 삭탈하고 내친다', fx:{prestige:5, pop:-5},
+        act(){ delete S.ministers[id]; return {text:`${md.name}의 관모가 바닥에 떨어졌다.\n조정에 서늘한 침묵이 흘렀다. 본보기는 되었으리라.`}; }},
+      {label:'설마… 하며 지켜본다',
+        act(){
+          if(Math.random()<.6){
+            const stolen = Math.round(S.gold*0.2);
+            S.gold -= stolen; delete S.ministers[id];
+            SFX.bad();
+            return {text:`이튿날 새벽, ${md.name}이(가) 국고의 금궤를 수레에 싣고 국경을 넘었다!\n💰${fmt(stolen)}을 도둑맞았다. 믿는 도끼에 발등 찍힌 격.`, fxList:[['gold',-stolen]]};
+          }
+          S.ministers[id].loy = 55;
+          return {text:`알고 보니 회동의 정체는… 여제의 즉위 기념 연회를 몰래 준비하는 모임이었다.\n${md.name}의 충심이 오해를 벗었다.`};
+        }},
+    ],
+  };
+}
+function hintFor(ch){
+  const chips = [];
+  if(ch.fx){
+    for(const k in ch.fx){
+      const v = ch.fx[k]; if(!v) continue;
+      chips.push(`<span class="hint-chip ${v>0?'up':'down'}">${RES_META[k].icon} ${v>0?'+':''}${v}</span>`);
+    }
+  }
+  if(ch.loyal) chips.push(`<span class="hint-chip ${ch.loyal>0?'up':'down'}">🤝 충성 ${ch.loyal>0?'+':''}${ch.loyal}</span>`);
+  if(ch.permGold) chips.push(`<span class="hint-chip up">💰 +${ch.permGold}/일 (영구)</span>`);
+  if(ch.permFood) chips.push(`<span class="hint-chip up">🌾 +${ch.permFood}/일 (영구)</span>`);
+  if(ch.hfx){
+    if(hasSpy()){
+      for(const k in ch.hfx){
+        const v = ch.hfx[k];
+        chips.push(`<span class="hint-chip mys">🐈‍⬛ ${RES_META[k].icon} ${v>0?'+':''}${v}</span>`);
+      }
+    }else chips.push('<span class="hint-chip mys">❓ 숨은 결과</span>');
+  }
+  if(ch.risky){
+    const p = Math.round(clamp(ch.risky.p + foxLuck(),0,.95)*100);
+    chips.push(`<span class="hint-chip dice">🎲 성공 ${p}%${mLv('fox')?' (여우 보정)':''}</span>`);
+  }
+  if(ch.act && !ch.fx && !ch.risky && !ch.hfx) chips.push('<span class="hint-chip mys">❓ 운에 맡긴다</span>');
+  return chips.join('');
+}
+function showEvent(ev){
+  S.stats.events++;
+  const card = $('#event-card');
+  card.innerHTML = `
+    <div class="ev-art"><span class="ev-tag ${ev.rare?'rare':''}">${ev.rare?'✦ 희귀 ✦':'📯 '+(ev.tag||'사건')}</span><span class="big">${ev.icon}</span></div>
+    <div class="ev-body">
+      <div class="ev-title">${esc(ev.title)}</div>
+      <p class="ev-text">${ev.text}</p>
+      <div class="ev-choices">${ev.choices.map((c,i)=>`
+        <button class="choice" data-ch="${i}">
+          <span class="c-label">${esc(c.label)}</span>
+          <span class="c-hint">${hintFor(c)}</span>
+        </button>`).join('')}
+      </div>
+    </div>`;
+  $('#overlay-event').hidden = false;
+  SFX.chime();
+  card.querySelectorAll('.choice').forEach(btn=>{
+    btn.addEventListener('click', ()=>resolveChoice(ev, ev.choices[+btn.dataset.ch]), {once:true});
+  });
+}
+function resolveChoice(ev, ch){
+  $('#event-card').querySelectorAll('.choice').forEach(b=>b.disabled=true);
+  if(ev.once) S.seen[ev.id] = true;
+  if(ch.flag) S.flags[ch.flag] = true;
+  if(ch.clearFlag) delete S.flags[ch.clearFlag];
+  let text = ch.result || '';
+  let stamp = '';
+  let fxList = [];
+  if(ch.fx) fxList = fxList.concat(applyFx(ch.fx));
+  if(ch.hfx) fxList = fxList.concat(applyFx(ch.hfx, {silent:true}));
+  if(ch.loyal){
+    for(const id in S.ministers) S.ministers[id].loy = clamp(S.ministers[id].loy+ch.loyal,0,100);
+    if(ch.loyal) fxList.push(null); // marker not needed; loyalty shown in text chip below
+  }
+  if(ch.permGold) S.permGold += ch.permGold;
+  if(ch.permFood) S.permFood += ch.permFood;
+  if(ch.risky){
+    const p = clamp(ch.risky.p + foxLuck(), 0, .95);
+    const okRoll = Math.random() < p;
+    const branch = okRoll ? ch.risky.win : ch.risky.lose;
+    stamp = okRoll ? '<div class="r-stamp ok">— 성공 —</div>' : '<div class="r-stamp no">— 실패 —</div>';
+    text = branch.text;
+    if(branch.fx) fxList = fxList.concat(applyFx(branch.fx));
+    if(branch.flag) S.flags[branch.flag]=true;
+    okRoll ? SFX.chime() : SFX.bad();
+  }
+  if(ch.act){
+    const r = ch.act();
+    if(r){
+      text = r.text || text;
+      if(r.fx) fxList = fxList.concat(applyFx(r.fx));
+      if(r.fxList) fxList = fxList.concat(r.fxList);
+    }
+  }
+  fxList = fxList.filter(Boolean);
+  const chips = fxList.length ? fxChips(fxList) : '<span class="hint-chip">변화 없음</span>';
+  const loyChip = ch.loyal ? `<span class="hint-chip ${ch.loyal>0?'up':'down'}">🤝 충성 ${ch.loyal>0?'+':''}${ch.loyal}</span>` : '';
+  const body = $('#event-card .ev-body');
+  body.innerHTML = `
+    <div class="ev-title">${esc(ev.title)}</div>
+    <div class="ev-result">
+      ${stamp}
+      <p class="r-text">${text}</p>
+      <div class="r-fx">${chips}${loyChip}</div>
+      <button class="btn gold wfull" id="btn-ev-ok">받들겠사옵니다</button>
+    </div>`;
+  log(`[${ev.title}] ${ch.label}`);
+  $('#btn-ev-ok').addEventListener('click', closeEvent, {once:true});
+}
+function closeEvent(){
+  $('#overlay-event').hidden = true;
+  renderAll();
+  afterAction();
+  busy = false;
+}
+
+/* ---------- promotion ---------- */
+let promoQueue = [];
+function checkPromotion(){
+  while(S.rank < RANKS.length-1 && S.prestige >= RANKS[S.rank+1].need){
+    S.rank++;
+    promoQueue.push(S.rank);
+  }
+  if(promoQueue.length) showPromo(promoQueue.shift());
+}
+function unlocksAt(rank){
+  const u = [];
+  MINISTERS.filter(m=>m.unlock===rank).forEach(m=>u.push(`${m.emoji} ${m.name} 등용 가능`));
+  TERRITORIES.filter(t=>t.unlock===rank && !t.home).forEach(t=>u.push(`${t.emoji} ${t.name} 원정 가능`));
+  return u;
+}
+function showPromo(rank){
+  const r = RANKS[rank];
+  const box = $('#promo-box');
+  const unlocks = unlocksAt(rank);
+  box.innerHTML = `
+    <div class="promo-pre">敎 旨 — 승 급</div>
+    <div class="promo-icon">${r.icon}</div>
+    <div class="promo-title">${r.name}</div>
+    <p class="promo-desc">${esc(r.desc)}\n만조백관이 하례를 올리옵니다!</p>
+    ${unlocks.length? `<div class="promo-unlocks">${unlocks.map(u=>`<div class="unlock-chip">🔓 ${u}</div>`).join('')}</div>`:''}
+    <button class="btn gold big" id="btn-promo-ok">성은이 망극하옵니다</button>`;
+  $('#overlay-promo').hidden = false;
+  SFX.gong();
+  burstParticles(box, 44);
+  log(`${r.name}(으)로 승급하다! 온 나라가 사흘을 경축하다.`);
+  $('#btn-promo-ok').addEventListener('click', ()=>{
+    $('#overlay-promo').hidden = true;
+    renderAll();
+    if(promoQueue.length) showPromo(promoQueue.shift());
+    else save();
+  }, {once:true});
+}
+function burstParticles(host, n){
+  const r = host.getBoundingClientRect();
+  for(let i=0;i<n;i++){
+    const p = document.createElement('span');
+    p.className='particle';
+    const ang = rnd(0,Math.PI*2), dist = rnd(60,240);
+    p.style.setProperty('--dx', Math.cos(ang)*dist+'px');
+    p.style.setProperty('--dy', Math.sin(ang)*dist - 40+'px');
+    p.style.left = (r.width/2 + rnd(-10,10))+'px';
+    p.style.top  = (r.height*0.3 + rnd(-10,10))+'px';
+    p.style.animationDelay = rnd(0,.35)+'s';
+    if(Math.random()<.3) p.style.background='radial-gradient(circle at 35% 30%, #ffd9e4, #f08aa6)';
+    host.appendChild(p);
+    setTimeout(()=>p.remove(), 2100);
+  }
+}
+
+/* ---------- game over / ending ---------- */
+function checkGameOver(){
+  if(S.gold < 0) return showGameOver('국고 파탄',
+    '금고 바닥에 먼지만 나뒹구옵니다.\n빚쟁이 상단들이 궁문을 두드리고, 대신들은 하나둘 짐을 쌌사옵니다.\n여제는 폐위되어 습지의 오두막으로 돌아갔사옵니다…');
+  if(S.pop <= 0) return showGameOver('민심 이반',
+    '성난 백성들이 횃불을 들고 궁으로 몰려왔사옵니다.\n"물러나라! 물러나라!"\n깃털 왕관은 진흙탕에 떨어졌사옵니다…');
+  return false;
+}
+function showGameOver(cause, text){
+  const box = $('#over-box');
+  box.innerHTML = `
+    <div class="o-icon">🥀</div>
+    <h2>폐 위</h2>
+    <p class="o-cause"><b style="color:#ffb199">[${cause}]</b>\n${text}\n\n— ${S.day}일의 치세가 막을 내렸다 —</p>
+    <button class="btn gold big" id="btn-retry">🦩 다시 일어선다</button>`;
+  $('#overlay-over').hidden = false;
+  SFX.lose();
+  if(!DEBUG) clearSave();
+  $('#btn-retry').addEventListener('click', ()=>{
+    $('#overlay-over').hidden = true;
+    startGame(newState());
+  }, {once:true});
+  return true;
+}
+function showEnding(){
+  S.unified = true; S.endless = true; S.rank = RANKS.length-1;
+  const box = $('#end-box');
+  box.innerHTML = `
+    <div class="promo-pre">— 天 下 統 一 —</div>
+    <div class="promo-icon">🦩</div>
+    <h2>성세천하</h2>
+    <div class="e-sub">플라밍고 여제 즉위</div>
+    <p class="e-txt">사자 황제의 갈기가 땅에 엎드리고,\n열한 영지의 깃발이 모두 분홍으로 물들었다.\n\n몰락 귀족의 딸 홍련 —\n이제 천하가 그녀의 이름 앞에 고개를 숙인다.\n\n"짐의 치세는, 이제부터 시작이니라."</p>
+    <div class="e-stats">
+      <span>치세 ${fmt(S.day)}일</span><span>위신 ${fmt(S.prestige)}</span>
+      <span>전적 ${S.stats.won}승 ${S.stats.lost}패</span>
+    </div>
+    <button class="btn gold big" id="btn-endless">☀️ 끝없는 치세 계속하기</button>`;
+  $('#overlay-end').hidden = false;
+  SFX.gong(); setTimeout(()=>SFX.win(), 700);
+  burstParticles(box, 60);
+  log('천하통일! 홍학의 깃발이 황궁 평원에 꽂히다.');
+  $('#btn-endless').addEventListener('click', ()=>{
+    $('#overlay-end').hidden = true;
+    renderAll(); save();
+    toast('끝없는 치세 — 이제 천하는 그대의 정원이다.');
+  }, {once:true});
+}
+
+/* ---------- war ---------- */
+function warFoodCost(t){ return 20 + Math.round(t.def/10); }
+function openWar(tid){
+  const t = TERRITORIES.find(x=>x.id===tid);
+  const fc = warFoodCost(t);
+  const myPow = Math.round(S.army * tigerAtk());
+  const box = $('#war-box');
+  box.classList.remove('warring');
+  box.innerHTML = `
+    <div class="war-stage">
+      <div class="war-side"><div class="war-face">🦩</div><div class="war-name">홍학군</div><div class="war-pow">⚔️ ${fmt(myPow)}</div></div>
+      <div class="war-vs">VS</div>
+      <div class="war-side"><div class="war-face">${t.emoji}</div><div class="war-name">${t.lord}</div><div class="war-pow">🛡️ ${fmt(t.def)}</div></div>
+    </div>
+    <div class="war-body">
+      <p class="war-note"><b>${t.name}</b> 원정 — 군량 <b>🌾${fmt(fc)}</b> 소요.\n${esc(t.desc)}</p>
+      <div style="display:flex; gap:8px">
+        <button class="btn wfull" id="btn-war-cancel">회군</button>
+        <button class="btn gold wfull" id="btn-war-go" ${S.food<fc?'disabled':''}>🥁 출정이다!</button>
+      </div>
+    </div>`;
+  $('#overlay-war').hidden = false;
+  $('#btn-war-cancel').addEventListener('click', ()=>{ $('#overlay-war').hidden = true; }, {once:true});
+  $('#btn-war-go').addEventListener('click', ()=>fight(t), {once:true});
+}
+function fight(t, forceResult){
+  const box = $('#war-box');
+  const fc = warFoodCost(t);
+  applyFx({food:-fc}, {silent:true, noGuard:true});
+  SFX.drums();
+  box.classList.add('warring');
+  const stage = box.querySelector('.war-stage');
+  const clash = document.createElement('div');
+  clash.className='clash'; clash.textContent='💥';
+  stage.appendChild(clash);
+  box.querySelector('.war-body').innerHTML = '<p class="war-note">북소리가 지축을 흔든다…</p>';
+  setTimeout(()=>{
+    const atk = S.army * tigerAtk() * rnd(0.85, 1.2);
+    const win = forceResult!==undefined ? forceResult : atk >= t.def;
+    box.classList.remove('warring');
+    clash.remove();
+    const flash = document.createElement('div');
+    flash.className = 'flash ' + (win?'gold':'red');
+    document.body.appendChild(flash);
+    setTimeout(()=>flash.remove(), 600);
+    let lossPct = win ? rnd(.06,.14) : rnd(.25,.38);
+    if(mLv('hawk')) lossPct *= (1 - Math.min(.5, .15 + .07*mLv('hawk')));
+    const loss = Math.round(S.army * lossPct);
+    if(win){
+      S.owned[t.id] = true;
+      S.stats.won++;
+      applyFx({army:-loss, prestige:t.prestige}, {noGuard:true});
+      SFX.win();
+      log(`${t.name} 정벌 대승! ${t.lord}이(가) 항복하다.`);
+      box.querySelector('.war-body').innerHTML = `
+        <div style="margin:6px 0 14px"><span class="stamp win">대승</span></div>
+        <p class="war-note"><b>${t.name}</b>이(가) 홍학의 깃발 아래 들어왔다!\n전사자 <b>⚔️${fmt(loss)}</b> · 위신 <b>✨+${fmt(t.prestige)}</b> · 산출 <b>💰${t.income.gold}·🌾${t.income.food}/일</b> 증가</p>
+        <button class="btn gold wfull" id="btn-war-ok">개선한다</button>`;
+    }else{
+      S.stats.lost++;
+      applyFx({army:-loss, pop:-5}, {noGuard:true});
+      SFX.lose();
+      log(`${t.name} 원정 실패… ${t.lord}의 방비가 견고했다.`);
+      box.querySelector('.war-body').innerHTML = `
+        <div style="margin:6px 0 14px"><span class="stamp lose">패배</span></div>
+        <p class="war-note">화살비 속에 퇴각 나팔이 울렸다.\n전사자 <b>⚔️${fmt(loss)}</b> · 민심 <b>❤️-5</b>\n더 많은 병력을 모아 다시 오라.</p>
+        <button class="btn wfull" id="btn-war-ok">회군한다</button>`;
+    }
+    $('#btn-war-ok').addEventListener('click', ()=>{
+      $('#overlay-war').hidden = true;
+      renderAll();
+      if(win && t.boss && !S.unified){ setTimeout(showEnding, 350); return; }
+      afterAction();
+    }, {once:true});
+  }, 1700);
+}
+
+/* ---------- shared post-action ---------- */
+function afterAction(){
+  if(checkGameOver()) return;
+  checkPromotion();
+  renderAll();
+  save();
+}
+
+/* ---------- actions ---------- */
+function draft(){
+  const c = draftCost();
+  if(S.gold<c.gold || S.food<c.food) return;
+  applyFx({gold:-c.gold, food:-c.food, army:25}, {noGuard:true});
+  S.stats.drafted++;
+  SFX.drums();
+  toast('🥁 장정 25명이 창을 들었사옵니다!');
+  renderMap(); afterAction();
+}
+function recruit(id){
+  const md = minDef(id);
+  if(S.gold < md.cost || S.ministers[id]) return;
+  applyFx({gold:-md.cost}, {noGuard:true});
+  S.ministers[id] = {lv:1, loy:ri(55,75)};
+  SFX.chime();
+  toast(`${md.emoji} ${md.name}이(가) 조정에 들었사옵니다!`);
+  log(`${md.name} 등용. ${md.quote}`);
+  renderMinisters(); afterAction();
+}
+function upgrade(id){
+  const md = minDef(id), st = S.ministers[id];
+  if(!st || st.lv>=5) return;
+  const c = upgradeCost(md, st.lv);
+  if(S.gold < c) return;
+  applyFx({gold:-c}, {noGuard:true});
+  st.lv++;
+  SFX.coin();
+  toast(`${md.emoji} ${md.name} → Lv.${st.lv}!`);
+  renderMinisters(); afterAction();
+}
+function gift(id){
+  const md = minDef(id), st = S.ministers[id];
+  if(!st) return;
+  const c = giftCost(md, st.lv);
+  if(S.gold < c) return;
+  applyFx({gold:-c}, {noGuard:true});
+  st.loy = clamp(st.loy+15, 0, 100);
+  SFX.chime();
+  toast(`${md.emoji} ${md.name}의 충성도 +15`);
+  renderMinisters(); afterAction();
+}
+
+/* ---------- mute ---------- */
+function renderMute(){
+  $('#btn-mute').textContent = muted ? '🔕' : '🔔';
+  $('#btn-mute2').textContent = muted ? '🔕 소리 꺼짐' : '🔔 소리 켜짐';
+}
+function toggleMute(){
+  muted = !muted;
+  localStorage.setItem(MUTE_KEY, muted?'1':'0');
+  renderMute();
+  if(!muted) SFX.chime();
+}
+
+/* ---------- boot ---------- */
+function startGame(state){
+  S = state;
+  busy = false;
+  promoQueue = [];
+  shown.gold = shown.food = shown.pop = shown.army = null;
+  $('#screen-title').style.display = 'none';
+  $('#game').hidden = false;
+  renderAll();
+  renderReport(null);
+  renderMute();
+}
+function showTitle(){
+  const sv = loadSave();
+  $('#btn-continue').disabled = !sv;
+  $('#btn-continue').style.opacity = sv ? '' : '.45';
+  $('#title-save-info').textContent = sv
+    ? `사관의 기록: ${RANKS[sv.rank].name} 홍련 · ${sv.day}일차 치세`
+    : '아직 사관의 기록이 없사옵니다.';
+  $('#title-emblem').innerHTML = FLAMINGO_SVG;
+  $('#screen-title').style.display = '';
+  $('#game').hidden = true;
+}
+
+function wire(){
+  $('#btn-new').addEventListener('click', ()=>{
+    if(loadSave() && !confirm('기존 치세의 기록이 지워지옵니다. 처음부터 시작하시겠사옵니까?')) return;
+    clearSave();
+    startGame(newState());
+    SFX.gong();
+  });
+  $('#btn-continue').addEventListener('click', ()=>{
+    const sv = loadSave();
+    if(sv){ startGame(sv); SFX.chime(); }
+  });
+  $('#btn-day').addEventListener('click', passDay);
+  $('#btn-draft').addEventListener('click', draft);
+  $('#btn-mute').addEventListener('click', toggleMute);
+  $('#btn-mute2').addEventListener('click', toggleMute);
+  $('#btn-reset').addEventListener('click', ()=>{
+    if(!confirm('정녕 옥좌를 버리고 처음부터 다시 시작하시겠사옵니까?')) return;
+    clearSave(); startGame(newState());
+  });
+  $$('.tab').forEach(b=>b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
+  $('#minister-list').addEventListener('click', e=>{
+    const b = e.target.closest('button'); if(!b || b.disabled) return;
+    if(b.dataset.recruit) recruit(b.dataset.recruit);
+    else if(b.dataset.up) upgrade(b.dataset.up);
+    else if(b.dataset.gift) gift(b.dataset.gift);
+  });
+  $('#territory-list').addEventListener('click', e=>{
+    const b = e.target.closest('button'); if(!b || b.disabled) return;
+    if(b.dataset.attack) openWar(b.dataset.attack);
+  });
+  document.addEventListener('pointerdown', ()=>{ ctx(); }, {once:true});
+}
+
+/* ---------- headless playtest (?sim=N) ---------- */
+function simPromo(){ while(S.rank<RANKS.length-1 && S.prestige>=RANKS[S.rank+1].need){ S.rank++; } }
+function simWar(t){
+  S.food -= warFoodCost(t);
+  const win = S.army*tigerAtk()*rnd(.85,1.2) >= t.def;
+  let lossPct = win? rnd(.06,.14) : rnd(.25,.38);
+  if(mLv('hawk')) lossPct *= (1-Math.min(.5,.15+.07*mLv('hawk')));
+  S.army = Math.max(0, S.army-Math.round(S.army*lossPct));
+  if(win){ S.owned[t.id]=true; S.stats.won++; S.prestige+=t.prestige;
+    if(t.boss){ S.unified=true; S.endless=true; S.rank=RANKS.length-1; } }
+  else{ S.stats.lost++; S.pop=clamp(S.pop-5,0,100); }
+}
+function runSim(days){
+  const traj = [];
+  for(let i=0;i<days;i++){
+    if(S.pop<=0 || S.gold<0) break;
+    S.day++; collectIncome(); loyaltyTick();
+    const ev = pickEvent();
+    showEvent(ev);
+    const btns = Array.from($('#event-card').querySelectorAll('.choice'));
+    btns[ri(0,btns.length-1)].click();
+    const ok = $('#btn-ev-ok'); if(ok) ok.click();
+    $('#overlay-event').hidden = true;
+    let pok = $('#btn-promo-ok'); if(pok && !$('#overlay-promo').hidden) pok.click();
+    if(S.pop<=0 || S.gold<0) break;
+    for(const md of MINISTERS){
+      if(!S.ministers[md.id] && md.unlock<=S.rank && S.gold > md.cost+120) recruit(md.id);
+    }
+    if(S.gold>520){
+      let best=null, bc=1e9;
+      for(const id in S.ministers){ const st=S.ministers[id]; if(st.lv<5){ const c=upgradeCost(minDef(id),st.lv); if(c<bc){bc=c;best=id;} } }
+      if(best && S.gold>bc+220) upgrade(best);
+    }
+    for(const id in S.ministers){ if(S.ministers[id].loy<35 && S.gold>220) gift(id); }
+    let guard=0;
+    while(S.gold>draftCost().gold+160 && S.food>draftCost().food+130 && S.army<1500 && guard++<8) draft();
+    for(const t of TERRITORIES){
+      if(!S.owned[t.id] && t.unlock<=S.rank && S.army >= t.def*1.2 && S.food>warFoodCost(t)+60){ simWar(t); simPromo(); }
+    }
+    simPromo();
+    pok = $('#btn-promo-ok'); if(pok && !$('#overlay-promo').hidden) pok.click();
+    $('#overlay-promo').hidden = true;
+    if(S.day%10===0) traj.push(`d${S.day} r${S.rank} p${Math.round(S.prestige)} g${Math.round(S.gold)} f${Math.round(S.food)} pop${S.pop} a${S.army}`);
+  }
+  const dead = (S.pop<=0? 'DEPOSED-POP' : S.gold<0? 'DEPOSED-GOLD' : 'ALIVE');
+  document.body.dataset.sim = `${dead} / day ${S.day} / rank ${S.rank}(${RANKS[S.rank].name}) / prestige ${Math.round(S.prestige)} / gold ${Math.round(S.gold)} food ${Math.round(S.food)} pop ${S.pop} army ${S.army} / wars ${S.stats.won}W${S.stats.lost}L / owned ${Object.keys(S.owned).length}/${TERRITORIES.length} / unified ${S.unified} // ${traj.join(' | ')}`;
+}
+
+/* ---------- debug hooks (?screen=..., ?rich=1) ---------- */
+function debugBoot(){
+  const qp = new URLSearchParams(location.search);
+  const screen = qp.get('screen');
+  const rich = qp.get('rich');
+  const sim = qp.get('sim');
+  if(!screen && !rich && !sim) return false;
+  DEBUG = true;
+  muted = true;
+  const st = rich ? richState() : newState();
+  if(sim){ startGame(st); runSim(Math.min(500, +sim||60)); return true; }
+  if(screen === 'title'){ showTitle(); return true; }
+  startGame(st);
+  switch(screen){
+    case 'event': {
+      const id = qp.get('event') || 'bribe';
+      const ev = EVENTS.find(e=>e.id===id) || EVENTS[0];
+      showEvent(ev);
+      break;
+    }
+    case 'eventresult': {
+      const ev = EVENTS.find(e=>e.id===(qp.get('event')||'harvest')) || EVENTS[0];
+      showEvent(ev);
+      const c = $('#event-card .choice'); if(c) c.click();
+      break;
+    }
+    case 'ministers': switchTab('ministers'); break;
+    case 'war': switchTab('map'); break;
+    case 'warconfirm': switchTab('map'); openWar(qp.get('t')||'desert'); break;
+    case 'warresult': {
+      switchTab('map');
+      const t = TERRITORIES.find(x=>x.id===(qp.get('t')||'desert'));
+      openWar(t.id);
+      fight(t, qp.get('lose') ? false : true);
+      break;
+    }
+    case 'profile': switchTab('profile'); break;
+    case 'promo': showPromo(Math.min(+(qp.get('rank')||4), RANKS.length-1)); break;
+    case 'ending': showEnding(); break;
+    case 'gameover': showGameOver('국고 파탄','금고 바닥에 먼지만 나뒹구옵니다.\n빚쟁이 상단들이 궁문을 두드리옵니다…'); break;
+  }
+  return true;
+}
+
+/* ---------- init ---------- */
+window.__state = () => S;
+wire();
+renderMute();
+if(!debugBoot()){
+  showTitle();
+}
+</script>
+</body>
+</html>
