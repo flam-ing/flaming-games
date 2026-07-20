@@ -3,7 +3,7 @@
 크로시로드(길건너친구들) 스타일의 3D 복셀 아케이드 게임입니다.
 분홍 플라밍고가 되어 도로, 강, 철길을 건너 최대한 멀리 가보세요!
 
-**[지금 플레이하기](https://flam-ing.github.io/flaming-games/flamingo-road/)**
+**[지금 플레이하기](https://flaming-games.vercel.app/flamingo-road/)**
 
 ## 게임 소개
 

@@ -4,7 +4,7 @@
 단일 `index.html` 파일 하나로 동작하는 정적 웹 게임으로, Babylon.js의 PBR 렌더링과
 chess.js의 완전한 체스 규칙 엔진 위에서 만들어졌습니다.
 
-**▶ 바로 플레이:** https://flam-ing.github.io/flaming-games/flamingo-chess/
+**▶ 바로 플레이:** https://flaming-games.vercel.app/flamingo-chess/
 
 ---
 
