@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#161923" />
+    <title>Flamingo Ringout 64 — 플라밍고 링아웃</title>
+    <script type="module" crossorigin src="/assets/index-D60aCTjj.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BhRgN2jn.css">
+  </head>
+  <body>
+    <main id="cabinet" aria-label="플라밍고 링아웃 64 게임">
+      <div id="viewport">
+        <canvas id="scene" aria-label="3D 플라밍고 대전 무대"></canvas>
+        <div class="scanlines" aria-hidden="true"></div>
+        <div id="ui"></div>
+        <div id="announcement" aria-live="polite"></div>
+        <div id="battle-hud" hidden></div>
+        <button id="pause" class="small-control" hidden aria-label="일시정지">
+          Ⅱ
+        </button>
+      </div>
+      <div id="touch" aria-label="터치 조작">
+        <div class="dpad">
+          <button data-key="ArrowLeft" aria-label="왼쪽 이동">◀</button
+          ><button data-key="ArrowDown" aria-label="아래 방향">▼</button
+          ><button data-key="ArrowRight" aria-label="오른쪽 이동">▶</button
+          ><button data-key="ArrowUp" aria-label="위 방향">▲</button>
+        </div>
+        <div class="actions">
+          <button data-key="KeyC" aria-label="방어">방어</button
+          ><button data-key="Space" aria-label="점프">점프</button
+          ><button data-key="KeyZ" aria-label="공격">공격</button
+          ><button data-key="KeyX" aria-label="필살기">필살</button>
+        </div>
+      </div>
+      <footer>
+        <span
+          >← → 이동 · ↑ ↓ 방향 · SPACE 점프 · Z 공격 · X 필살 · C 방어 · ESC
+          일시정지</span
+        ><label><input type="checkbox" id="sound" /> 소리</label
+        ><button id="help">조작 설명</button>
+      </footer>
+    </main>
+    <p id="status" class="sr-only" aria-live="polite"></p>
+  </body>
+</html>

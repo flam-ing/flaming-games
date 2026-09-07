@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#a6152a"><title>플라밍고, 감독님을 구해줘!</title>  <script type="module" crossorigin src="/assets/index-ZlAnENaQ.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DCpY_N7J.css">
+</head>
+<body>
+  <main id="cabinet">
+    <header><h1>플라밍고, 감독님을 구해줘!</h1><div class="utilities"><button id="sound" aria-pressed="false">소리 꺼짐</button><button id="pause" disabled>일시정지</button><button id="help">조작법</button></div></header>
+    <section id="screen" aria-label="축구 구출 작전">
+      <canvas id="game" width="960" height="600" tabindex="0" role="img" aria-label="경기장. 좌우 이동, 위 또는 Space 점프, Z 또는 마우스 태클, X 슛, C 동료 호출. 아래 경기 상황을 참고하세요."></canvas>
+      <section class="overlay" id="menu" aria-labelledby="menu-title">
+        <div class="title-label">2002 FLASH FOOTBALL TRIBUTE · ORIGINAL FLAMINGO EDITION</div>
+        <h2 id="menu-title">감독님을<br><strong>구해줘!</strong></h2>
+        <p>하프타임에 사라진 감독님.<br>공 하나와 두 다리로 경기장을 돌파하자.</p>
+        <div class="menu-actions"><button id="start">구출 작전 시작</button><button id="practice">훈련장 입장</button></div>
+        <label class="difficulty">경기 난이도 <select id="difficulty"><option value="rookie">동네 대표 — 기본</option><option value="cup">컵 대회 — 적 공격력 증가</option></select></label>
+        <p class="title-tip">달리면서 Z → 어깨 태클 / 미끄러지는 적은 점프로!</p>
+      </section>
+      <section class="overlay hidden" id="pause-panel" aria-labelledby="pause-title"><div class="paper"><h2 id="pause-title">작전 타임</h2><p>경기 시간과 모든 동작을 멈췄습니다.</p><button id="resume">경기 계속</button><button id="restart">처음부터 다시</button><button id="back-menu">타이틀로</button></div></section>
+      <section class="overlay hidden" id="results" aria-labelledby="result-title"><div class="paper"><h2 id="result-title"></h2><p id="result-copy"></p><p id="result-stats"></p><button id="again">다시 도전</button><button id="result-menu">타이틀로</button></div></section>
+      <section class="overlay hidden" id="brief" aria-labelledby="brief-title"><div class="paper"><p id="brief-num" class="kicker"></p><h2 id="brief-title"></h2><p id="brief-copy"></p><button id="continue">경기장으로</button></div></section>
+    </section>
+    <nav id="touch" aria-label="화면 조작"><div><button data-hold="left" aria-label="왼쪽 이동">◀</button><button data-hold="right" aria-label="오른쪽 이동">▶</button></div><div><button data-action="jump">점프</button><button data-action="tackle">태클</button><button data-action="kick">슛</button><button data-action="special">동료</button></div></nav>
+    <footer><p><kbd>← →</kbd> 달리기 <kbd>↑ / Space</kbd> 점프 <kbd>Z / 클릭</kbd> 태클 <kbd>X</kbd> 슛 <kbd>C</kbd> 동료 <kbd>P</kbd> 멈춤</p><output id="status" aria-live="off">준비 완료. 구출 작전 시작을 누르세요.</output></footer>
+  </main>
+  <dialog id="help-dialog"><h2>공보다 빠르게, 태클보다 높게</h2><dl><dt>좌우 / A·D</dt><dd>달리기. 방향을 바꾸면 공격 방향도 바뀝니다.</dd><dt>위 / W / Space</dt><dd>점프. 미끄러지는 오리는 밟아서 제압하세요.</dd><dt>Z / J / 경기장 클릭</dt><dd>달리는 중 어깨 태클, 멈춰 있으면 근거리 킥.</dd><dt>X / K</dt><dd>슛. 축구공이 적과 골대에 맞습니다. 공중에서는 헤딩.</dd><dt>C / L</dt><dd>응원 60 이상일 때 동료 3명이 달려옵니다.</dd><dt>P / Escape</dt><dd>일시정지. 다른 탭으로 옮겨도 자동으로 멈춥니다.</dd></dl><p>노란 모자의 낮은 태클은 어깨로 막을 수 없습니다. 점프로 피하고 밟으세요. 까마귀 골키퍼의 공은 슛으로 되받아칠 수 있습니다.</p><button id="close-help">알겠어요</button></dialog>
+</body></html>

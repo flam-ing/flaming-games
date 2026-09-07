@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#282a2e" />
+    <title>플라밍고 샤오 · 책상 위의 결투</title>
+    <script type="module" crossorigin src="/assets/index-Cj6sTZZH.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-cjPF5PvQ.css">
+  </head>
+  <body>
+    <main class="player-shell">
+      <header>
+        <h1>FLAMINGO XIAO <span>책상 위의 결투</span></h1>
+        <nav aria-label="게임 설정">
+          <button id="sound" aria-pressed="false">소리 꺼짐</button
+          ><button id="pause" disabled>일시정지</button
+          ><button id="help">조작 설명</button>
+        </nav>
+      </header>
+      <div class="stage">
+        <canvas
+          id="game"
+          width="1200"
+          height="675"
+          tabindex="0"
+          role="img"
+          aria-label="책상 위 홍학 먹선 격투 게임. 방향키 이동, Z 연속 공격, X 점프, C 방어. 상대와 같은 깊이에 서서 상대를 향해 공격하세요."
+        ></canvas>
+        <div id="title" class="window title-window">
+          <div class="window-bar">
+            untitled_fight.fla <span>01 / DESKTOP</span>
+          </div>
+          <div class="window-body">
+            <div class="ink-logo">小小<span>FLAMINGO</span></div>
+            <h2>책상 위의 결투</h2>
+            <p>
+              모니터 앞에서 시작해 키보드 끝까지.<br />작은 먹선 홍학의 한 발,
+              한 주먹.
+            </p>
+            <button id="start" class="start-button">싸움 시작</button
+            ><button id="practice">연습 · 시간 제한 없음</button
+            ><small>방향키 이동 / Z 공격 / X 점프 / C 방어</small>
+          </div>
+        </div>
+        <div id="paused" class="window modal" hidden>
+          <div class="window-bar">PAUSE</div>
+          <div class="window-body">
+            <h2>잠시 정지</h2>
+            <p>복귀한 뒤 직접 계속하기를 눌러 주세요.</p>
+            <button id="resume" class="start-button">계속하기</button
+            ><button id="reset">처음부터 다시</button>
+          </div>
+        </div>
+        <div id="instructions" class="window modal" hidden>
+          <div class="window-bar">FIGHT NOTES</div>
+          <div class="window-body">
+            <h2>맞기 전에, 반 박자.</h2>
+            <p>
+              방향키: 좌우 이동 + 책상 안쪽/바깥쪽 이동<br />Z: 잽 → 반대손 →
+              돌려차기. 연속으로 눌러 연결<br />X: 점프 / 공중에서 Z:
+              날아차기<br />C 유지: 방어 / 맞기 직전 C: 받아치기<br />받아친
+              직후 Z: 강한 반격
+            </p>
+            <p>
+              상대와 깊이가 다르거나 등을 돌리면 빗나갑니다.<br />붉은 공격
+              예고를 보고 방어하거나 옆으로 빠져 보세요.<br />P / Esc: 정지.
+              화면을 떠나면 입력도 해제됩니다.
+            </p>
+            <button id="close-help" class="start-button">알겠습니다</button>
+          </div>
+        </div>
+        <div id="result" class="window modal" hidden>
+          <div class="window-bar" id="result-bar">RESULT</div>
+          <div class="window-body">
+            <h2 id="result-title"></h2>
+            <p id="result-copy"></p>
+            <button id="next" class="start-button">다음 책상으로</button
+            ><button id="retry">처음부터 다시</button>
+          </div>
+        </div>
+      </div>
+      <footer>
+        <div class="pad" aria-label="터치 이동">
+          <button data-key="left" aria-label="왼쪽">←</button>
+          <div>
+            <button data-key="up" aria-label="안쪽">↑</button
+            ><button data-key="down" aria-label="바깥쪽">↓</button>
+          </div>
+          <button data-key="right" aria-label="오른쪽">→</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">
+          방향키 이동 · Z 연타 · X 점프 · C 방어
+        </p>
+        <div class="action-pad">
+          <button data-key="attack"><b>Z</b> 공격</button
+          ><button data-key="jump"><b>X</b> 점프</button
+          ><button data-key="guard"><b>C</b> 방어</button>
+        </div>
+      </footer>
+    </main>
+  </body>
+</html>

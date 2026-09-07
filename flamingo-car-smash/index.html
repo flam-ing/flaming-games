@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#172a31"><title>플라밍고 폐차반장 · Car Smash</title>  <script type="module" crossorigin src="/assets/index-CeVAf66-.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BMnPMR5T.css">
+</head>
+<body>
+  <main class="cabinet">
+    <header><h1>FLAMINGO <span>폐차반장</span></h1><div class="controls"><button id="sound" aria-pressed="false">소리 꺼짐</button><button id="pause" disabled>일시정지</button><button id="help">작업 요령</button></div></header>
+    <section class="screen" aria-label="폐차 작업장">
+      <canvas id="game" width="1100" height="650" tabindex="0" role="img" aria-label="앞유리, 보닛, 전조등, 그릴, 범퍼, 펜더를 클릭해 타격하세요. 숫자 1부터 8로 부위 선택, Enter 타격, Q 발구르기, W 해머, Space 냉각, P 일시정지."></canvas>
+      <div class="sheet" id="intro"><div class="stamp">SCRAPYARD / NIGHT SHIFT</div><h2>차는 퇴근하고<br><em>반장은 출근한다.</em></h2><p>홍학 정비공 핑크와 함께하는 합법 폐차 시험장.<br>부위를 골라 뛰어오르고, 부수고, 과열 전에 냉각!</p><button id="start" class="primary">1호차 작업 시작</button><button id="practice">시간 없는 연습</button><small>무상표 폐차 3대 · 사람 없는 안전 시험장</small></div>
+      <div class="sheet compact" id="paused" hidden><div class="stamp">TOOLS DOWN</div><h2>작업 중지</h2><p>시간도, 과열도 멈췄습니다.</p><button id="resume" class="primary">계속 작업</button><button id="restart">1호차부터 다시</button></div>
+      <div class="sheet compact" id="instructions" hidden><div class="stamp">FOREMAN'S NOTE</div><h2>부위마다 다른 한 방</h2><p>차량을 클릭하면 홍학이 그곳으로 뛰어가 타격합니다.<br>유리·전조등은 발구르기, 금속 패널은 해머에 약합니다.<br>버튼을 길게 누르면 강타. 망가진 부위는 점수가 없습니다.<br>과열이 높으면 냉각! 35% 이상 작업한 뒤 다음 차로 갈 수 있습니다.</p><p>1–8 부위 선택 · Enter 타격 · Q/W 도구<br>Space 냉각 · P/Esc 일시정지</p><button id="close-help" class="primary">알겠습니다</button></div>
+      <div class="sheet compact" id="result" hidden><div class="stamp" id="result-stamp"></div><h2 id="result-title"></h2><p id="result-text"></p><button id="next" class="primary">다음 차량</button><button id="again">처음부터 다시</button></div>
+    </section>
+    <footer><div class="tool-strip"><button data-tool="stomp" class="selected" aria-pressed="true">Q 발구르기 <span>유리·등</span></button><button data-tool="hammer" aria-pressed="false">W 해머 <span>금속</span></button><button id="cool">Space 냉각</button><button id="finish" disabled>작업 마감 →</button></div><p id="status" role="status" aria-live="polite">부위를 누르고 놓으면 공격합니다. 길게 누르면 강타.</p></footer>
+  </main>
+</body></html>

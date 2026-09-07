@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#11343f" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta
+      name="description"
+      content="갈대 수호전대 — 세 명의 플라밍고가 지키는 도시. 독립 2D 태그 액션 게임."
+    />
+    <title>갈대 수호전대 · Flamingo Rangers</title>
+    <script type="module" crossorigin src="/assets/index-BqPkWMm5.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CFHVRw5V.css">
+  </head>
+  <body>
+    <main id="cabinet" aria-label="갈대 수호전대 게임">
+      <canvas
+        id="game"
+        width="1280"
+        height="720"
+        tabindex="0"
+        aria-label="갈대 수호전대 전투 화면"
+      ></canvas>
+      <section id="overlay" aria-live="polite"></section>
+      <nav id="utility" aria-label="게임 설정">
+        <button id="sound" aria-pressed="false">소리 OFF</button>
+        <button id="motion" aria-pressed="false">동작 줄이기</button>
+        <button id="pause">일시정지 Esc</button>
+      </nav>
+      <section id="touch" aria-label="터치 조작">
+        <div class="move-pad">
+          <button data-key="ArrowLeft" aria-label="왼쪽 이동">◀</button
+          ><button data-key="ArrowRight" aria-label="오른쪽 이동">▶</button>
+        </div>
+        <div class="action-pad">
+          <button data-key="KeyV">방어</button
+          ><button data-key="KeyC">교대</button
+          ><button data-key="Space">점프</button
+          ><button data-key="KeyX">특수</button
+          ><button data-key="KeyZ">공격</button>
+        </div>
+      </section>
+      <p id="status" class="sr-only" role="status"></p>
+    </main>
+  </body>
+</html>

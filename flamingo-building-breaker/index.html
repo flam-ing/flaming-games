@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#e3a231" />
+    <meta
+      name="description"
+      content="검 한 자루로 층을 베고 낙하 공격을 받아내는 독립 홍학 액션 게임."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>홍학 일도양단 · Building Breaker</title>
+    <script type="module" crossorigin src="/assets/index-BYOFOaP8.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-2xvKB2F2.css">
+  </head>
+  <body>
+    <main id="game-shell" aria-label="홍학 일도양단 게임">
+      <canvas
+        id="battle"
+        width="1280"
+        height="720"
+        tabindex="0"
+        aria-label="건물 아래에서 공격하고 방어하는 게임 화면"
+      ></canvas>
+      <div id="menus" aria-live="polite"></div>
+      <nav id="settings" aria-label="게임 설정">
+        <button id="audio-toggle" aria-pressed="false">소리 OFF</button
+        ><button id="motion-toggle" aria-pressed="false">효과 줄이기</button
+        ><button id="pause-toggle">일시정지</button>
+      </nav>
+      <section id="touch-input" aria-label="터치 조작">
+        <button data-control="rise">↑ 상승베기</button
+        ><button data-control="guard">↓ 방어</button
+        ><button data-control="slash">Z 연속베기</button
+        ><button data-control="charge">X 충전 / 해방</button>
+      </section>
+      <p class="sr-only" id="live-status" role="status"></p>
+    </main>
+  </body>
+</html>
