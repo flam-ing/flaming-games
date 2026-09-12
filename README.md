@@ -5,7 +5,7 @@
 [![GitHub Pages](https://img.shields.io/badge/Deployment-GitHub%20Pages-brightgreen?style=for-the-badge&logo=github)](https://flam-ing.github.io/flaming-games/)
 
 > **대한민국의 1인 인디 해커 및 게임 개발자를 위한 플라밍고 컨셉의 레트로 2D/3D 웹 게임 컬렉션 통합 저장소입니다.**  
-> Chiptune WebAudio 사운드, 절차적 픽셀 아트, Three.js 3D 복셀 렌더러 등 외부 에셋 없이 순수 웹 브라우저 기술로만 설계된 9가지 시그니처 플라밍고 게임들이 수록되어 있습니다.
+> Chiptune WebAudio 사운드, 절차적 픽셀 아트, Three.js 3D 복셀 렌더러 등 외부 에셋 없이 순수 웹 브라우저 기술로만 설계된 18가지 시그니처 플라밍고 게임들이 수록되어 있습니다.
 
 ---
 
@@ -26,6 +26,15 @@ graph TD
     A --> H["7. Flamingo Empress (궁정 시뮬레이션)"]
     A --> I["8. Flamingo Craft (3D 마인크래프트)"]
     A --> J["9. Flamingo Gate Defense (3D 러너 디펜스)"]
+    A --> K["10. Flamingo Ramen (2D 타이쿤)"]
+    A --> L["11. Flamingo Rangers (런앤건)"]
+    A --> M["12. Flamingo Xiao (쿵푸 대전)"]
+    A --> N["13. Flamingo Talisman (부적 아케이드)"]
+    A --> O["14. Flamingo Car Smash (폐차 미니게임)"]
+    A --> P["15. Flamingo Ringout 64 (3D 대전)"]
+    A --> Q["16. Flamingo Football Rescue (축구 슈팅)"]
+    A --> R["17. Flamingo Desktop Destroyer (바탕화면 부수기)"]
+    A --> S["18. Flamingo Building Breaker (빌딩 철거)"]
 ```
 
 ### 1. ♟️ [Flamingo Chess](./flamingo-chess)
@@ -63,6 +72,44 @@ graph TD
 ### 9. 🛡️ [Flamingo Gate Defense](./flamingo-gate-defense)
 * **장르**: 3D 수학 관문 크라우드 러너 디펜스 (Three.js / Count Masters 느낌)
 * **🔗 플레이 하기**: **[Flamingo Gate Defense 플레이](https://flaming-games.vercel.app/flamingo-gate-defense/)**
+
+### 10. 🍜 [Flamingo Ramen](./flamingo-ramen)
+* **장르**: 밍고의 보글보글 라면가게 — 2D 레트로 패러디 타이쿤 게임
+* **🔗 플레이 하기**: **[Flamingo Ramen 플레이](https://flaming-games.vercel.app/flamingo-ramen/)** · [소스](https://github.com/flam-ing/flamingo-ramen)
+
+### 11. 🦸 [Flamingo Rangers](./flamingo-rangers)
+* **장르**: 출동! 플라밍고 전대 — 5색 특촬물 런앤건 아케이드 게임
+* **🔗 플레이 하기**: **[Flamingo Rangers 플레이](https://flaming-games.vercel.app/flamingo-rangers/)** · [소스](https://github.com/flam-ing/flamingo-rangers)
+
+### 12. 🥋 [Flamingo Xiao](./flamingo-xiao)
+* **장르**: 플라밍고 도조 격투 Xiao — 흑백 무협 쿵푸 대전 액션 게임
+* **🔗 플레이 하기**: **[Flamingo Xiao 플레이](https://flaming-games.vercel.app/flamingo-xiao/)** · [소스](https://github.com/flam-ing/flamingo-xiao)
+
+### 13. 🧧 [Flamingo Talisman](./flamingo-talisman)
+* **장르**: 플라밍고 강시 부적 도사 — 부적 던지기 2D 퇴마 아케이드 게임
+* **🔗 플레이 하기**: **[Flamingo Talisman 플레이](https://flaming-games.vercel.app/flamingo-talisman/)** · [소스](https://github.com/flam-ing/flamingo-talisman)
+
+### 14. 🚙 [Flamingo Car Smash](./flamingo-car-smash)
+* **장르**: 플라밍고 보너스 스테이지 폐차 — 스트리트 격투 파괴 미니게임
+* **🔗 플레이 하기**: **[Flamingo Car Smash 플레이](https://flaming-games.vercel.app/flamingo-car-smash/)** · [소스](https://github.com/flam-ing/flamingo-car-smash)
+
+### 15. 🥊 [Flamingo Ringout 64](./flamingo-ringout-64)
+* **장르**: 플라밍고 링아웃 64 — 로우폴리 3D 플랫폼 대전 액션 게임
+* **🔗 플레이 하기**: **[Flamingo Ringout 64 플레이](https://flaming-games.vercel.app/flamingo-ringout-64/)** · [소스](https://github.com/flam-ing/flamingo-ringout-64)
+
+### 16. ⚽ [Flamingo Football Rescue](./flamingo-football-rescue)
+* **장르**: 플라밍고 플라잉 슛 구출작전 — 2D 아케이드 축구 슈팅 게임
+* **🔗 플레이 하기**: **[Flamingo Football Rescue 플레이](https://flaming-games.vercel.app/flamingo-football-rescue/)** · [소스](https://github.com/flam-ing/flamingo-football-rescue)
+
+### 17. 🖥️ [Flamingo Desktop Destroyer](./flamingo-desktop-destroyer)
+* **장르**: 플라밍고 가상 바탕화면 부수기 — 2D 스트레스 해소 미니게임
+* **🔗 플레이 하기**: **[Flamingo Desktop Destroyer 플레이](https://flaming-games.vercel.app/flamingo-desktop-destroyer/)** · [소스](https://github.com/flam-ing/flamingo-desktop-destroyer)
+
+### 18. 🏗️ [Flamingo Building Breaker](./flamingo-building-breaker)
+* **장르**: 플라밍고 도심 빌딩 철거 — 건물 부수기 2D 액션 게임
+* **🔗 플레이 하기**: **[Flamingo Building Breaker 플레이](https://flaming-games.vercel.app/flamingo-building-breaker/)** · [소스](https://github.com/flam-ing/flamingo-building-breaker)
+
+> 10–18번은 각 개별 저장소(`flam-ing/flamingo-*`)에서 빌드한 결과물을 이 저장소의 서브폴더로 배포합니다. 소스 수정은 개별 저장소에서, 배포는 여기서.
 
 ---
 
