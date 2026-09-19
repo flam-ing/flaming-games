@@ -265,6 +265,9 @@
         a:focus-visible { outline:3px solid #68c7b3; outline-offset:5px; }
         @media (max-width:700px) { .stadium-feature { grid-template-columns:1fr; padding:29px 25px; gap:10px; } .stadium-feature h2 { font-size:61px; } .stadium-poster { display:none; } .stadium-feature p { font-size:13px; } }
         @media (prefers-reduced-motion:reduce) { *, *:before, *:after { animation:none!important; transition:none!important; } }
+        .party-feature { background:#e5edde; }
+        .party-poster:before { border-color:#e995b0; background:repeating-linear-gradient(0deg,#86aba7 0 22px,#96bdb5 22px 44px); }
+        .party-poster:after { content:'A LITTLE CHAOS. A LOT OF FLAMINGOS.'; letter-spacing:.08em; font-size:8px; }
     </style>
 </head>
 <body>
@@ -279,6 +282,16 @@
     </header>
 
     <main>
+        <section class="stadium-feature party-feature" aria-labelledby="party-title">
+            <div>
+                <div class="stadium-kicker">THE FLAMINGO PARTY COLLECTION · PLAYABLE PREVIEW</div>
+                <h2 id="party-title">FLAMINGO<br><span>PARTY.</span></h2>
+                <p>역대 파티 미니게임을 플라밍고와 직접 만든 3D 경기장으로 재구성합니다. 작품별 선정표와 지금 플레이할 수 있는 게임을 만나보세요.</p>
+                <div class="stadium-meta"><span>20 COLLECTIONS</span><span>751개 선정 · 제작 진행 중</span><span>1–4P · CPU · TOUCH</span></div>
+                <a class="stadium-link" href="./flamingo-party/">파티 컬렉션 입장 <span aria-hidden="true">↗</span></a>
+            </div>
+            <div class="stadium-poster party-poster" aria-hidden="true"><span class="stadium-mingo">🦩</span><span class="stadium-pennant">3D<small>PARTY CLUB</small></span></div>
+        </section>
         <section class="stadium-feature" aria-labelledby="stadium-title">
             <div>
                 <div class="stadium-kicker">NEW TO FLAMING GAMES · THE MINI-GAME CLUB</div>
