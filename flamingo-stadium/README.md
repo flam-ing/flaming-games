@@ -91,7 +91,7 @@ npm install --no-save --package-lock=false playwright-core
 node scripts/integration.mjs
 ```
 
-검증에는 로컬 Chrome이 필요하고 `play.sh`에는 `playwright-core`도 필요합니다. `CHROME`, `PW_MODULE` 환경변수로 경로를 지정할 수 있습니다. `integration.mjs`도 같은 환경변수를 지원하고, 첫 인자로 배포된 Stadium 허브 URL을 넘겨 검사할 수 있습니다. 통합 검증 보고서는 `scripts/out/integration-report.json`에 저장됩니다. 실행 결과는 `scripts/out/`에 생성됩니다. 3D 화면 확인 시 WebGL을 지원하는 브라우저를 사용하고, 세 게임 각각의 3D/2D 전환과 키보드 입력을 확인하세요.
+검증에는 로컬 Chrome이 필요하고 `play.sh`에는 `playwright-core`도 필요합니다. `CHROME`, `PW_MODULE` 환경변수로 경로를 지정할 수 있습니다. `integration.mjs`도 같은 환경변수를 지원하고, 첫 인자로 배포된 Stadium 허브 URL을 넘겨 검사할 수 있습니다. GitHub Pages 주소는 `.html` 경로로 자동 검사하며, 다른 정적 호스트에서도 `QA_CLEAN_URLS=0`으로 같은 방식을 선택할 수 있습니다. 통합 검증 보고서는 `scripts/out/integration-report.json`에 저장됩니다. 실행 결과는 `scripts/out/`에 생성됩니다. 3D 화면 확인 시 WebGL을 지원하는 브라우저를 사용하고, 세 게임 각각의 3D/2D 전환과 키보드 입력을 확인하세요.
 
 ## 새 게임 추가
 

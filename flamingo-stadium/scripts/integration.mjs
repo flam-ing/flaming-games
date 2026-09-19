@@ -2,7 +2,8 @@
 // Usage: node scripts/integration.mjs [https://your-host/flamingo-stadium/] [id ...]
 // Uses isolated browser contexts, accelerates only the animation clock, and mutes audio.
 // Full rounds run the real update rules; rendering is sampled to keep headless QA fast.
-// Env: PW_MODULE, CHROME, QA_ROOT, QA_NO_FULL=1, QA_REPORT
+// Env: PW_MODULE, CHROME, QA_ROOT, QA_NO_FULL=1, QA_REPORT, QA_CLEAN_URLS=0
+// Uses installed Chrome by default. GitHub Pages checks use .html URLs automatically.
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { readFile, stat, writeFile, mkdir } from 'node:fs/promises';
@@ -36,7 +37,8 @@ if (!base) {
   base = `http://127.0.0.1:${server.address().port}/flaming-games/flamingo-stadium/`;
 }
 base = base.replace(/\/?$/, '/');
-const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined, headless: true, args:['--enable-unsafe-swiftshader'] });
+const cleanUrls = process.env.QA_CLEAN_URLS !== '0' && !new URL(base).hostname.endsWith('.github.io');
+const browser = await chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : { channel: 'chrome' }), headless: true, args:['--enable-unsafe-swiftshader'] });
 const results = [];
 const errors = [];
 async function step(page, n=1) { await page.evaluate(n=>window.__qaStep(n), n); }
@@ -86,7 +88,7 @@ for(const id of ids){await test(`${id}: title, 4 humans, start, finish, replay`,
   }finally{await context.close();}
 });}
 // Exercise the alternate URL shape used by Vercel cleanUrls + trailingSlash.
-for(const id of ids){await test(`${id}: clean URL assets and title`,async()=>{
+for(const id of cleanUrls ? ids : []){await test(`${id}: clean URL assets and title`,async()=>{
   const {page,context,pageErrors,missing}=await openGame(id,true);
   try{assert.equal((await snapshot(page)).state,'title');assert.deepEqual(pageErrors,[]);assert.deepEqual(missing,[]);return {httpErrors:missing};}
   finally{await context.close();}
@@ -124,8 +126,8 @@ for(const id of ['splash','run','topsy'].filter(id=>ids.includes(id))){
   });
 }
 for(const id of ['splash','run','topsy'].filter(id=>ids.includes(id))){
-  await test(`${id}: clean URL path, naturally finished round and replay`,async()=>{
-    const {page,context,pageErrors,missing}=await openGame(id,true);
+  await test(`${id}: ${cleanUrls ? 'clean URL' : 'HTML URL'}, naturally finished round and replay`,async()=>{
+    const {page,context,pageErrors,missing}=await openGame(id,cleanUrls);
     try{
       assert.equal((await snapshot(page)).state,'title');
       await tap(page,'Space');await step(page,65);
@@ -143,7 +145,7 @@ if(!process.env.QA_NO_FULL)await test('splash: WebGL unavailable retains playabl
   try{await tap(page,'Space');await step(page,65);assert.equal((await snapshot(page)).state,'play');assert.equal((await snapshot(page)).renderer.enabled,false);assert.equal((await snapshot(page)).renderer.failed,true);assert.deepEqual(pageErrors,[]);assert.deepEqual(missing,[]);return {snapshot:await snapshot(page)};}finally{await context.close();}
 });
 await browser.close();if(server)await new Promise(r=>server.close(r));
-const report={base,createdAt:new Date().toISOString(),results,errors};
+const report={base,cleanUrls,createdAt:new Date().toISOString(),results,errors};
 await mkdir(path.dirname(reportPath),{recursive:true});
 await writeFile(reportPath,JSON.stringify(report,null,2));
 console.log(`Report: ${reportPath}`);
