@@ -1,3 +1,7 @@
+import * as partyE from './games/party_e.js';
+import * as generation8b from './games/generation8b.js';
+import * as later5 from './games/later5.js';
+import * as classics7 from './games/classics7.js';
 import * as generation8a from './games/generation8a.js';
 import * as handheld7 from './games/handheld7.js';
 import * as handheld6 from './games/handheld6.js';
@@ -32,6 +36,10 @@ import * as classics3 from './games/classics3.js';
 import * as handheld2 from './games/handheld2.js';
 const modernTitles=['super-mario-party','jamboree'];
 const packs=[
+ {pack:partyE},
+ {pack:generation8b},
+ {pack:later5},
+ {pack:classics7},
  {pack:generation8a},
  {pack:handheld7},
  {pack:handheld6},

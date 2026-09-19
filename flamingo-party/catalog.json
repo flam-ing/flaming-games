@@ -2451,14 +2451,17 @@
         {
           "originalName": "Piece Out",
           "parodyNameKo": "분홍 블록 채우기",
-          "mechanic": "컨베이어의 색 조각을 회전해 빈 판을 완전히 메우고 같은 색 영역을 키운다.",
+          "mechanic": "컨베이어 조각을 회전해 5×7칸을 채운다. 조각을 빠르게 놓으면 소액 점수, 완성하면 같은 색 칸의 총수로 보너스를 받는다.",
           "controls": "스틱 커서, A 집기·놓기, L/R 회전",
-          "winCondition": "완성한 판에서 얻은 점수 합계가 더 높으면 승리.",
-          "durationSeconds": null,
+          "winCondition": "60초 동안 얻은 배치 속도 점수와 완성 색 보너스의 합계가 높은 선수 승리; 동점 무승부.",
+          "durationSeconds": 60,
           "format": "duel",
           "sourceUrl": "https://www.mariowiki.com/Piece_Out",
           "selectionReason": "모양 포장과 색 영역 계획",
-          "confidence": "high"
+          "confidence": "high",
+          "additionalSources": [
+            "https://tasvideos.org/Forum/Posts/432929"
+          ]
         }
       ]
     },
