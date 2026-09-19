@@ -32,7 +32,7 @@ export class View {
       const object=new THREE.Mesh(geometry,material);object.castShadow=type!=='text';object.receiveShadow=true;this.scene.add(object);entry={...entry,type,object};this.objects.set(id,entry);
     }
     const o=entry.object;entry.frame=this.frame;o.visible=true;o.position.set(p.x||0,p.y||0,p.z||0);o.scale.set(p.sx??1,p.sy??1,p.sz??1);o.rotation.set(p.rx||0,p.ry||0,p.rz||0);
-    if(type==='text'){const label=String(p.text??'');if(entry.text!==label||entry.color!==p.color){const c=entry.canvas.getContext('2d');c.clearRect(0,0,512,128);c.fillStyle=p.color||'#213d47';c.font='800 70px system-ui';c.textAlign='center';c.textBaseline='middle';c.fillText(label,256,68,500);entry.texture.needsUpdate=true;entry.text=label;entry.color=p.color;}if(p.billboard!==false)o.quaternion.copy(this.camera.quaternion);}
+    if(type==='text'){const label=String(p.text??''),width=Math.max(64,Math.min(2048,Math.round(128*Math.abs(p.sx??1)/Math.max(.01,Math.abs(p.sy??1)))));if(entry.canvas.width!==width){entry.canvas.width=width;entry.text=null;}if(entry.text!==label||entry.color!==p.color){const c=entry.canvas.getContext('2d');c.clearRect(0,0,width,128);c.fillStyle=p.color||'#213d47';c.font='800 70px system-ui';c.textAlign='center';c.textBaseline='middle';c.fillText(label,width/2,68,width-12);entry.texture.needsUpdate=true;entry.text=label;entry.color=p.color;}if(p.billboard!==false)o.quaternion.copy(this.camera.quaternion);}
     else {o.material.color.set(p.color||'#efbe5b');o.material.opacity=p.opacity??1;o.material.transparent=(p.opacity??1)<1;o.material.emissive.set(p.glow?p.color||'#fff6c0':'#000000');o.material.emissiveIntensity=p.glow?.35:0;}
     return o;
   }

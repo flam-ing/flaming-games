@@ -5,3 +5,5 @@
 @media(max-width:700px){#play{height:100dvh}.play-layout{display:block;flex:1;min-height:0}.stage{aspect-ratio:auto;height:100%;min-height:0}.collection-heading{align-items:start}#totals{max-width:142px;flex-shrink:0}.collection-heading h2{font-size:32px}}
 .scope{max-width:1312px;margin:0 auto;padding:0 0 48px;color:var(--muted);font-size:11px;line-height:1.8}.scope summary{cursor:pointer;border-top:1px solid var(--line);padding-top:18px;font-weight:700}.scope article{padding:12px 0;border-bottom:1px solid var(--line)}.scope h4{margin:0;font-size:12px;color:var(--ink)}.scope p{max-width:850px}.scope a{border-bottom:1px solid;font-size:10px}@media(max-width:1440px){.scope{padding-left:64px;padding-right:64px}}@media(max-width:700px){.scope{padding-left:22px;padding-right:22px}}
 .play-top .play-buttons{display:flex;flex-direction:row;align-items:center;gap:12px}.play-buttons #mute-game{font-size:9px;color:var(--muted)}
+
+.adaptation-note{margin-top:18px;font-size:11px;color:var(--muted)}.adaptation-note summary{cursor:pointer;font-weight:700}.input-guide{white-space:pre-line}
