@@ -8274,14 +8274,19 @@
         {
           "originalName": "Rocky Road",
           "parodyNameKo": "홍학 바위 철거단",
-          "mechanic": "차가 멈출 때마다 둘이 길의 바위를 주먹·발차기로 부순다. 팀원을 때리면 기절해 출발이 늦어진다.",
+          "mechanic": "두 사람이 작은 바위 2개→1개→3개, 중간 바위 2개, 거대 바위 1개를 주먹·공중 발차기로 치운다. MP6과 달리 동료를 맞혀도 긴 기절은 없지만 협동 공격의 흐름을 방해할 수 있다.",
           "controls": "스틱 이동, A 점프, B 펀치, 점프 중 B 발차기.",
           "winCondition": "다섯 바위 구간을 치우고 먼저 도착",
           "durationSeconds": 300,
           "format": "2v2",
           "sourceUrl": "https://www.mariowiki.com/Rocky_Road_(minigame)",
           "selectionReason": "수록 목록과 개별 게임의 재수록판 차이를 대조한 편집 선정: 조작·규칙·팀 역할의 다양성. 인기 순위로 주장하지 않음.",
-          "confidence": "high"
+          "confidence": "medium",
+          "versionVerificationNote": "재수록 수록 여부와 기본 바위 파괴 규칙을 확인했다. MP6의 아군 피격 기절·회복 대기 세부 동작은 이 재수록판에서 별도 검증하지 못했다.",
+          "additionalSourceUrls": [
+            "https://www.mariowiki.com/Mario_Party:_The_Top_100#Changes",
+            "https://www.guiasnintendo.com/0a_NINTENDO_3DS/mario_party_top_100/mario_party_top_100_sp/minijuegos.html"
+          ]
         },
         {
           "originalName": "Pokey Pummel",
@@ -8564,7 +8569,7 @@
           "parodyNameKo": "홍학의 어질러진 선반",
           "mechanic": "처음의 물건 배치를 기억하고 섞인 물건을 원래 선반 칸에 놓는다.",
           "controls": "스틱 이동, A로 물건 집기·놓기, B로 가림막 조작.",
-          "winCondition": "가장 많이 정확히 복원하면 승리; 전원이 낮은 점수면 무승부.",
+          "winCondition": "가장 많이 정확히 복원하면 승리; 전원 0점이면 무승부.",
           "durationSeconds": 30,
           "format": "4p",
           "sourceUrl": "https://www.mariowiki.com/Messy_Memory",
@@ -8814,14 +8819,19 @@
         {
           "originalName": "Rocky Road",
           "parodyNameKo": "홍학 바위 철거단",
-          "mechanic": "차가 멈출 때마다 둘이 길의 바위를 주먹·발차기로 부순다. 팀원을 때리면 기절해 출발이 늦어진다.",
+          "mechanic": "두 사람이 다섯 구간의 바위를 주먹·공중 발차기로 치운다. 공식 플레이 영상에서 동료 피격 시 별이 돌며 잠깐 멈추는 반응을 확인했다.",
           "controls": "스틱 이동, A 점프, B 펀치, 점프 중 B 발차기.",
           "winCondition": "다섯 바위 구간을 치우고 먼저 도착",
           "durationSeconds": 300,
           "format": "2v2",
           "sourceUrl": "https://www.mariowiki.com/Rocky_Road_(minigame)",
           "selectionReason": "수록 목록과 개별 게임의 재수록판 차이를 대조한 편집 선정: 조작·규칙·팀 역할의 다양성. 인기 순위로 주장하지 않음.",
-          "confidence": "high"
+          "confidence": "medium",
+          "versionVerificationNote": "재수록 수록 여부와 기본 바위 파괴 규칙을 확인했다. MP6의 아군 피격 기절·회복 대기 세부 동작은 이 재수록판에서 별도 검증하지 못했다.",
+          "additionalSourceUrls": [
+            "https://www.nintendo.com/jp/switch/az82a/minigame/index.html",
+            "https://www.nintendo.com/jp/switch/az82a/assets/movie/minigame/g0075.mp4"
+          ]
         },
         {
           "originalName": "Pokey Pummel",

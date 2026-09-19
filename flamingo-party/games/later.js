@@ -137,7 +137,7 @@ games['Flash Forward']=(c)=>{
 
 export const notes={
  'Freeze Frame':'3D 장면 위의 사진틀을 방향 입력으로 조절합니다. 일반 1점·금색 3점과 단 한 장 촬영 규칙을 유지했습니다.',
- 'Snow Whirled':'원작 A/B/Y/X를 A/B/C/D로 재배치했습니다. 순서를 맞힐 때마다 90도 회전하며 한 명씩 도전합니다. 활공 길이는 브라우저판에 맞게 조정했습니다.',
+ 'Snow Whirled':'원작 A/B/Y/X를 A/B/C/D로 재배치했습니다. 순서를 맞힐 때마다 90도 회전하며 한 명씩 도전합니다. 활공 길이는 브라우저판에 맞게 조정했습니다. MP6 9,720도/슈퍼스타즈 9,990도 상한이며 톱100의 원작 상한은 확인되지 않아 9,720도로 정했습니다.',
  'Trap Ease Artist':'10초 한 번 포획, 일반 1점·금색 3점입니다. 동물 이동과 우리 배치는 새로 제작했습니다.',
  'Picture This':'넘기는 그림책의 꽃 성장 장면을 새로 그렸습니다. 같은 장면을 찾아 3점 선취하는 규칙을 유지했습니다.',
  'Target Tag':'방향 입력을 공중 조향으로 사용합니다. 점수 과녁과 0점 초기화 과녁을 유지했으며 비행 코스는 새로 제작했습니다.',
@@ -151,7 +151,7 @@ export const notes={
 
 export const supportedTitles={
  'Smashdance':['mp6'],'Odd Card Out':['mp6'],'Freeze Frame':['mp6'],
- 'Catch You Letter':['mp6','top-100','superstars'],'Snow Whirled':['mp6','superstars'],
+ 'Catch You Letter':['mp6','top-100','superstars'],'Snow Whirled':['mp6','top-100','superstars'],
  'Trap Ease Artist':['mp6','top-100','superstars'],'Mowtown':['mp6'],'Note to Self':['mp6'],'Same Is Lame':['mp6'],
  "Monty's Revenge":['mp7','top-100','superstars'],'The Final Countdown':['mp7','top-100','superstars'],
  'Take Me Ohm':['mp7'],'Cointagious':['mp7'],'Picture This':['mp7'],'Target Tag':['mp7'],
