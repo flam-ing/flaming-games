@@ -269,6 +269,14 @@
         .party-feature { background:#e5edde; }
         .party-poster:before { border-color:#e995b0; background:repeating-linear-gradient(0deg,#86aba7 0 22px,#96bdb5 22px 44px); }
         .party-poster:after { content:'A LITTLE CHAOS. A LOT OF FLAMINGOS.'; letter-spacing:.08em; font-size:8px; }
+
+        .pocket-feature { background: linear-gradient(120deg, #193e35, #244c42); color: #fff8e9; border-color: #78a894; }
+        .pocket-feature p { color: #d6e5d9; }
+        .pocket-feature h2 span { color: #f1b9bd; }
+        .pocket-feature .stadium-kicker { color: #d7dab3; }
+        .pocket-feature .stadium-link { background: #f1b9bd; color: #233c37; }
+        .pocket-poster::before, .pocket-poster::after { display: none; }
+        .pocket-poster img { width: 100%; max-width: 350px; height: auto; display: block; }
     </style>
 </head>
 <body>
@@ -279,10 +287,20 @@
         <div class="logo-emoji">🦩</div>
         <h1>Flaming Games</h1>
         <p class="subtitle">설치 없이 즐기는 플라밍고 2D/3D 게임 컬렉션. 혼자 하는 모험부터 한 키보드로 함께하는 스타디움 운동회까지, 지금 한 판 시작하세요.</p>
-        <span class="badge">20개 게임 컬렉션 · Party 751개 수록 항목 · Stadium 21종</span>
+        <span class="badge">21개 게임 컬렉션 · Pocket 36종 · Party 751개 수록 · Stadium 21종</span>
     </header>
 
     <main>
+        <section class="stadium-feature pocket-feature" aria-labelledby="pocket-title">
+            <div>
+                <div class="stadium-kicker">NEW · THE 2D POCKET CLUB</div>
+                <h2 id="pocket-title">FLAMINGO<br><span>POCKET.</span></h2>
+                <p>작은 게임, 커다란 한 판 더. 올림픽 종목에서 착안한 운동회, 한 버튼 도전, 광고 속 퍼즐을 플라밍고 2D 게임으로 만나보세요.</p>
+                <div class="stadium-meta"><span>36 MINI-GAMES</span><span>운동회 12 · 한 버튼 12 · 퍼즐 12</span><span>1P · 키보드 · 터치</span></div>
+                <a class="stadium-link" href="./flamingo-pocket/">주머니 속 게임 시작 <span aria-hidden="true">↗</span></a>
+            </div>
+            <div class="stadium-poster pocket-poster" aria-hidden="true"><img src="./flamingo-pocket/poster.svg" alt="" width="350" height="310"></div>
+        </section>
         <section class="stadium-feature party-feature" aria-labelledby="party-title">
             <div>
                 <div class="stadium-kicker">THE FLAMINGO PARTY COLLECTION · PLAY NOW</div>

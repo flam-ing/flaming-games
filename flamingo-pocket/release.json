@@ -1,0 +1,22 @@
+{
+  "release": "flamingo-pocket-36-833de0eae9ce74d9",
+  "games": 36,
+  "categories": {
+    "sports": 12,
+    "tap": 12,
+    "puzzle": 12
+  },
+  "assets": {
+    "index.html": "2a674094aa7b18399c4a35abf4226de507a1f8c69963e7d0ecb3cb63d0e9a83d",
+    "style.css": "575f30bcaa732f9efa92e379c7b72d2036dd5d608c6ee6724452a0ceb0978722",
+    "app.js": "4dd4f1e1630651c3997a199b2bf96ca66f2372e1539de26fc5a2f735bcdfbfb8",
+    "registry.js": "dbaeb83bbad83fd28fc008fc0ea32b1aa46f14fcd0e18d50338892f94cc49dd5",
+    "core.js": "597aa1b8b96cc56fa0732ecfb296311dc9a6fb5f21e9bd57dd84bf016b04d24c",
+    "draw.js": "8fa55c1329403c34d4ea755e66494756b669e9e7aa947e71cbb2a59608e63d36",
+    "icon.svg": "e051ee85f0b4dea083c30569d87a057463074f06f995828cb34b1db8f5113fd8",
+    "poster.svg": "f9de7902d32a6c4594686c86747a5268eb1ca5314c0884a554d2a7c24d8fd541",
+    "games/sports.js": "5cfa52c5bfba1e67496408fd57742ff5ae431820268284488fcd70078593a9ed",
+    "games/tap.js": "c66f79c03b57fc9b94c025ca0c552d6d5698458b87c383abea7903630b25f110",
+    "games/puzzle.js": "b2c608aef98d571d6206200c4df34e0825331484000b53e8980c34cb22abfd58"
+  }
+}
