@@ -1,3 +1,9 @@
+import * as classics4 from './games/classics4.js';
+import * as dungeon from './games/dungeon.js';
+import * as jamboree2 from './games/jamboree2.js';
+import * as handheld3 from './games/handheld3.js';
+import * as generation4 from './games/generation4.js';
+import * as generation5 from './games/generation5.js';
 import * as featured from './games/featured.js';
 import * as modern from './games/modern.js';
 import * as modern2 from './games/modern2.js';
@@ -9,12 +15,17 @@ import * as handheld from './games/handheld.js';
 import * as jamboree from './games/jamboree.js';
 import * as classics2 from './games/classics2.js';
 import * as modern4 from './games/modern4.js';
+import * as classics3 from './games/classics3.js';
 import * as handheld2 from './games/handheld2.js';
 const modernTitles=['super-mario-party','jamboree'];
 const packs=[
- {pack:featured,titles:{Booksquirm:['mp4'],Slaparazzi:['super-mario-party'],'Sizzling Stakes':['super-mario-party']}},
+ {pack:classics4},
+ {pack:dungeon},
+ {pack:jamboree2},{pack:handheld3},
+ {pack:generation4},{pack:generation5},
+ {pack:featured,titles:{Booksquirm:['mp4','top-100','superstars'],Slaparazzi:['super-mario-party'],'Sizzling Stakes':['super-mario-party']}},
  {pack:modern4},{pack:jamboree},{pack:modern,defaults:modernTitles},{pack:modern2,defaults:modernTitles},{pack:modern3,defaults:modernTitles},
- {pack:later,defaults:['mp6','mp7','mp8','mp9','mp10']},{pack:later2},{pack:handheld},{pack:handheld2},{pack:classics},{pack:classics2}
+ {pack:later,defaults:['mp6','mp7','mp8','mp9','mp10']},{pack:later2},{pack:handheld},{pack:handheld2},{pack:classics},{pack:classics2},{pack:classics3}
 ];
 export const normalize=name=>String(name).toLowerCase().replace(/[^a-z0-9]/g,'');
 const definitions=new Map();

@@ -1,7 +1,7 @@
 import {clamp,dist,toward} from '../core.js';
 function separate(players,r=.65){for(let i=0;i<players.length;i++)for(let j=i+1;j<players.length;j++){const a=players[i],b=players[j];if(!a.alive||!b.alive)continue;const d=dist(a,b);if(d<r*2&&d>.001){const k=(r*2-d)/2,dx=(a.x-b.x)/d,dz=(a.z-b.z)/d;a.x+=dx*k;b.x-=dx*k;a.z+=dz*k;b.z-=dz*k;}}}
-function books(c){
- c.bounds={x:7.5,z:4.8};c.limit=300;c.view={size:18,eye:[0,22,15],target:[0,1,0]};let page=0,phase=0,holes=[],fallen=false;
+function books(c,m){
+ c.bounds={x:7.5,z:4.8};c.limit=Infinity;c.view={size:18,eye:[0,22,15],target:[0,1,0]};let page=0,phase=0,holes=[],fallen=false;if(m.titleId!=='mp4')c.lastStanding=()=>{const alive=c.players.filter(p=>p.alive);if(alive.length===1)c.complete(alive.map(p=>p.i),'마지막 생존자');else if(alive.length===0){const last=Math.max(...c.players.map(p=>p.outAt));const latest=c.players.filter(p=>p.outAt===last);c.complete(latest.length===4?[]:latest.map(p=>p.i),'마지막 페이지 생존 순위');}};
  const cells=Array.from({length:24},(_,n)=>({x:(n%6-2.5)*2.5,z:(Math.floor(n/6)-1.5)*2.5}));
  function next(){page++;phase=0;fallen=false;holes=c.shuffle(cells).slice(0,Math.max(2,7-Math.floor(page/3)));}next();
  return {update(dt){phase+=dt;const wait=Math.max(1.35,4.4-page*.13);c.hint(`제 ${page}장 · 구멍 아래로 피하세요`);
@@ -35,4 +35,4 @@ function steaks(c){
  },render(){c.arena({width:20,depth:16,color:'#eecdb5'});states.forEach((s,i)=>{const p=c.players[i],z=s.z-.6,x=s.x;c.draw('pan'+i,'cylinder',{x,y:.25,z,sx:3,sy:.35,sz:3,color:'#344a55'});c.draw('handle'+i,'box',{x:x+2,y:.3,z,sx:2,sy:.22,sz:.35,color:'#476370'});c.draw('steak'+i,'box',{x,y:1+s.tilt*2,z,sx:1.4,sy:1.4,sz:1.4,color:s.cooked[s.f[0]]>=1?'#a66e3e':'#ed9391',rz:s.tilt*2});c.draw('face'+i,'text',{x,y:2.15,z,sx:1,sy:.5,text:String(s.f[0]+1),color:'#fff4d3'});s.cooked.forEach((heat,f)=>c.draw('heat'+i+'_'+f,'box',{x:x+(f-2.5)*.48,y:.08,z:z+2.4,sx:.4,sy:.16+heat*.5,sz:.4,color:heat>=1?'#abcc78':colors[f]}));c.draw('label'+i,'text',{x,y:3.2,z,sx:3,sy:.75,text:`${i+1}P · ${p.score}/6`,color:p.color});});},timeout(){c.highest('익힌 면이 가장 많은 플레이어');}};
 }
 export const games={'Booksquirm':books,'Slaparazzi':paparazzi,'Sizzling Stakes':steaks};
-export const notes={Booksquirm:'책장의 구멍과 낙하 순서는 새로 제작했습니다.',Slaparazzi:'7라운드, 자리 순위에 따른 3·2·1·0점과 밀치기 규칙을 적용했습니다.','Sizzling Stakes':'Joy-Con 팬 기울이기를 방향 입력으로 바꾸고, 익힘 상태를 색상으로 표시합니다. 굽는 시간은 브라우저판에 맞게 조정했습니다. 너무 급하게 방향을 바꾸면 고기를 떨어뜨려 처음부터 다시 굽습니다.'};
+export const notes={Booksquirm:'책장의 구멍과 낙하 순서는 새로 제작했습니다. MP4는 마지막 생존자가 동시에 눌리면 무승부이며, 톱100·슈퍼스타즈는 네 명이 동시에 눌릴 때만 무승부입니다.',Slaparazzi:'7라운드, 자리 순위에 따른 3·2·1·0점과 밀치기 규칙을 적용했습니다.','Sizzling Stakes':'Joy-Con 팬 기울이기를 방향 입력으로 바꾸고, 익힘 상태를 색상으로 표시합니다. 굽는 시간은 브라우저판에 맞게 조정했습니다. 너무 급하게 방향을 바꾸면 고기를 떨어뜨려 처음부터 다시 굽습니다.'};

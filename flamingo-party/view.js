@@ -17,6 +17,11 @@ export class View {
     this.resize();this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);
   }
   resize(){const w=this.canvas.clientWidth||960,h=this.canvas.clientHeight||600;this.renderer.setSize(w,h,false);this.aspect=w/h;}
+  pointer(clientX,clientY,height=0){
+    const rect=this.canvas.getBoundingClientRect(),x=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width)),y=Math.max(0,Math.min(1,(clientY-rect.top)/rect.height));
+    this.camera.updateMatrixWorld();const ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2(x*2-1,1-y*2),this.camera);const point=ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-height),new THREE.Vector3());
+    return {x,y,worldX:point?.x||0,worldZ:point?.z||0,worldValid:!!point,valid:true};
+  }
   begin(){this.frame++;}
   draw=(id,type,p={})=>{
     let entry=this.objects.get(id);if(entry&&entry.type!==type){this.scene.remove(entry.object);entry.object.material?.map?.dispose();entry.object.material?.dispose();this.objects.delete(id);entry=null;}

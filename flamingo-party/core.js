@@ -14,7 +14,7 @@ export class Session {
   int(a,b){return Math.floor(this.rand(a,b+1));}
   pick(list){return list[this.int(0,list.length-1)];}
   shuffle(list){const a=[...list];for(let i=a.length-1;i>0;i--){const j=this.int(0,i);[a[i],a[j]]=[a[j],a[i]];}return a;}
-  input(p,bot={}){const raw=p.i<this.humans?this.inputs[p.i]:(typeof bot==='function'?bot():bot);const prev=this.previous[p.i],v={x:0,z:0,a:false,b:false,c:false,d:false,...raw};for(const k of ['a','b','c','d'])v[k+'p']=!!v[k]&&!prev[k];this.previous[p.i]={...v};return v;}
+  input(p,bot={}){const raw=p.i<this.humans?this.inputs[p.i]:(typeof bot==='function'?bot():bot);const prev=this.previous[p.i],v={x:0,z:0,a:false,b:false,c:false,d:false,...raw};for(const k of ['a','b','c','d'])v[k+'p']=!!v[k]&&!prev[k];const pointer=raw?.pointer||{x:.5,y:.5,down:false,valid:false};v.pointer={...pointer,pressed:!!pointer.down&&!prev.pointer?.down,released:!pointer.down&&!!prev.pointer?.down};this.previous[p.i]={...v,pointer:{...v.pointer}};return v;}
   move(p,input,speed=5,bounds=true){if(!p.alive)return;let x=input.x||0,z=input.z||0;const d=Math.hypot(x,z);if(d>1){x/=d;z/=d;}p.x+=x*speed*this.dt;p.z+=z*speed*this.dt;p.pose=d>.05?'run':'idle';if(d>.05)p.rotation=Math.atan2(-z,x);if(bounds){p.x=clamp(p.x,-this.bounds.x,this.bounds.x);p.z=clamp(p.z,-this.bounds.z,this.bounds.z);}}
   jump(p,input,force=7){if(p.y<=.001&&input.ap){p.vy=force;p.y=.001;}if(p.y>0){p.vy=(p.vy||0)-18*this.dt;p.y=Math.max(0,p.y+p.vy*this.dt);p.pose='jump';}}
   eliminate(p){if(!p.alive)return;p.alive=false;p.outAt=this.time;this.events.push({type:'out',player:p.i,time:this.time});}
