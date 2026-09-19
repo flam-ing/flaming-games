@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>딱딱하게! · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: A 버튼을 누르는 동안 딱딱해짐 · 바위가 닿기 직전에 톡!</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, bg, text, rr, rand, clamp, lerp, slots } = STADIUM;
+// Rock Harden (specs/harden.md §11 확정값) — 4인 동시 생존전(last one standing).
+// A 를 누르는 동안만 굳음(HP −12/s, 첫 프레임 비용 없음). 바위가 닿는 프레임에 굳어 있으면 방어(파편), 아니면 피격: 대 −30 / 중 −22 / 소 −15 + 경직 0.7s.
+// 플레이어당 공중 바위는 1개. 다음 그림자는 착지 후 max(0, gap(t) − 낙하시간) 뒤(후반엔 착지 즉시). 마지막 1명 승리, 같은 웨이브(≤0.2s) 동반 탈락은 무승부. 120s 안전 상한.
+const XS = [165, 375, 585, 795], FOOT = 395, HEAD = 290, SC = 1.6, MAXHP = 100, DRAIN = 12, STUN = 0.7, TOL = 0.05, TAPWIN = 0.3, FIRST = 1.5, LIMIT = 120, TIE = 0.2;
+const SIZE = { L: { r: 42, fall: 1.6, dmg: 30 }, M: { r: 30, fall: 1.2, dmg: 22 }, S: { r: 20, fall: 0.9, dmg: 15 } };
+// CPU 모델(§8·§11-7): impact 보다 d ms 먼저 누르고 hold ms 유지(둘 다 정규 잡음). d < 0 이면 착지 뒤에 누른 것이라 사람과 같은 규칙으로 피격. miss = 아예 안 누름. fake = 바위 없는데 헛굳기(200~350ms).
+// CPU 전원 Hard(§11-7) + 개별 편향. 시뮬 수치는 specs §11-12 참고(연타는 관용을 못 받음).
+const LV = { normal: { d: 180, sd: 110, hold: 320, hsd: 120, miss: .08, fake: .08 }, mid: { d: 130, sd: 80, hold: 250, hsd: 90, miss: .05, fake: .04 }, hard: { d: 90, sd: 55, hold: 180, hsd: 60, miss: .03, fake: .02 } };
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(Math.PI * 2 * Math.random());
+const pick = w => { let r = Math.random() * w.reduce((a, b) => a + b, 0); const i = w.findIndex(v => (r -= v) < 0); return i < 0 ? w.length - 1 : i; };
+const gapAt = t => t < 15 ? 2.2 : t < 45 ? lerp(2.2, 1.1, (t - 15) / 30) : t < 60 ? lerp(1.1, 0.8, (t - 45) / 15) : 0.8; // 같은 플레이어 기준 바위 간격(초)
+const fallAt = (k, t) => SIZE[k].fall * (1 - 0.3 * Math.min(t, 60) / 60); // 그림자 출현→착지. 60초에 30% 단축
+const sizeAt = t => 'LMS'[pick(t < 20 ? [60, 30, 10] : t < 40 ? [45, 35, 20] : [30, 40, 30])];
+let g, P, rocks, parts, pops, elapsed, nextWave, waves, shake, over, endT, winner, timeout;
+
+function contestant(s) { // CPU 전원 Hard(§11-7). 개별 편향: 오프셋 ±30ms, 홀드 ±40ms
+  const lvName = 'hard';
+  return { ...s, x: XS[s.i], hp: MAXHP, hard: false, vis: 0, flash: 0, stun: 0, hpFlash: 0, out: false, outAt: 0, relAt: -9, pressAt: -9, taps: [], rock: null, fake: null, blocks: 0, lvName, lv: LV[lvName], dB: gauss(0, 30), hB: gauss(0, 40) };
+}
+function addRock(p, size, off, first) {
+  const S = SIZE[size], fall = first ? FIRST : fallAt(size, elapsed);
+  const r = { p, r: S.r, dmg: S.dmg, start: elapsed + off, impact: elapsed + off + fall, fall, verts: Array.from({ length: 8 }, () => rand(0.8, 1.12)), done: false };
+  if (!p.human) { // CPU: 누르기 시작 시각과 홀드 길이를 미리 뽑는다(d < 0 → 착지 뒤 → 피격). HP 30% 이하 hard 는 홀드 −20% 절박 모드
+    const lv = p.lv, d = clamp(gauss(lv.d + p.dB, lv.sd), -400, 600) / 1000;
+    r.miss = Math.random() < lv.miss; r.press = r.impact - d;
+    r.hold = Math.max(0.03, gauss(lv.hold + p.hB, lv.hsd) / 1000) * (p.hp <= 30 && p.lvName === 'hard' ? 0.8 : 1);
+  }
+  p.rock = r; if (!p.human) p.cr = r; rocks.push(r);
+}
+function spawnWave() { // 패턴(§11-5): 4명 동시 같은 크기 40% / 왼→오 0.15s 순차 25% / 오→왼 15% / 무작위 2명 20%. 탈락·경직·공중 바위 보유자는 제외
+  const el = P.filter(p => !p.out && !p.rock); // 경직 중인 사람도 포함, 남은 경직만큼 늦게 출현(§11-4)
+  if (!el.length) { nextWave = elapsed + 0.1; return; }
+  const first = waves++ === 0, pat = first ? 0 : pick([40, 25, 15, 20]), same = first ? 'L' : sizeAt(elapsed);
+  const tg = pat === 3 ? el.sort(() => Math.random() - 0.5).slice(0, 2) : el;
+  tg.forEach(p => addRock(p, pat ? sizeAt(elapsed) : same, (pat === 1 ? p.i * 0.15 : pat === 2 ? (3 - p.i) * 0.15 : 0) + p.stun, first));
+  P.forEach(p => { if (!p.human && !p.out && !p.rock && Math.random() < p.lv.fake) p.fake = [elapsed + rand(0.1, 0.6), rand(0.2, 0.35)]; });
+  // 다음 그림자 = 이번 착지 + max(0, gap×U(0.85,1.15) − 낙하시간) (§11-10-2). 60초 이후엔 gap < 낙하시간이라 착지 즉시 다음 그림자가 뜬다
+  nextWave = Math.max(Math.max(...tg.map(p => p.rock.impact - p.stun)) + 0.02, elapsed + gapAt(elapsed) * rand(0.85, 1.15));
+}
+function die(p) { p.out = true; p.outAt = elapsed; p.hard = false; p.vis = 0; p.rock = null; p.cr = null; rocks.forEach(r => { if (r.p === p) r.done = true; }); sfx.lose(); }
+function pop(s, x, y, c) { pops.push({ s, x, y, c, life: 0.8 }); }
+function burst(r, ok) { // 방어: 파편 8개 + 먼지 링 / 피격: 흙먼지 5개
+  const x = r.p.x, y = HEAD - r.r * 0.6;
+  for (let k = 0; k < (ok ? 8 : 5); k++) parts.push({ k: ok ? 'shard' : 'dust', x, y: ok ? y : FOOT - 6, vx: rand(-260, 260), vy: ok ? rand(-380, -80) : rand(-170, -40), life: 0.5, rot: rand(0, 6), c: ok ? ['#7D6E60', '#5B4E44', '#A0917F'][k % 3] : 'rgba(150,135,120,.85)', s: ok ? r.r * 0.28 : rand(5, 9) });
+  parts.push({ k: 'ring', x, y: FOOT + 6, life: 0.4, r: r.r });
+}
+function drawRock(ctx, x, y, r, rot, v) { // 회갈색 8각 돌덩이 + 하이라이트 + 그늘
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  const poly = (s, dx, dy) => { ctx.beginPath(); v.forEach((m, k) => { const a = k / 8 * Math.PI * 2; ctx.lineTo(dx + Math.cos(a) * r * m * s, dy + Math.sin(a) * r * m * s); }); ctx.closePath(); };
+  poly(1, 0, 0); ctx.fillStyle = '#655A55'; ctx.fill(); ctx.strokeStyle = '#2F2825'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.stroke();
+  poly(0.55, -r * 0.2, -r * 0.22); ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fill();
+  poly(0.5, r * 0.22, r * 0.25); ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fill();
+  ctx.restore();
+}
+
+g = Game({ id: 'harden', title: '딱딱하게!', howto: ['A 버튼을 누르는 동안만 딱딱해져서 바위를 막아요.', '딱딱한 동안에도 HP가 줄어요. 바위에 깔리면 훨씬 많이 줄어요.', '바닥의 그림자를 보고 닿기 직전에 톡! 마지막 1명이 남으면 승리.'], duration: 0,
+  init() {
+    P = slots().map(contestant);
+    rocks = []; parts = []; pops = []; elapsed = 0; nextWave = 0; waves = 0; shake = 0; over = false; endT = 0; winner = null; timeout = false;
+  },
+  update(dt) {
+    shake = Math.max(0, shake - dt);
+    parts.forEach(q => { q.life -= dt; if (q.k !== 'ring') { q.vy += 900 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.rot += 6 * dt; } }); parts = parts.filter(q => q.life > 0);
+    pops.forEach(o => { o.life -= dt; o.y -= 40 * dt; }); pops = pops.filter(o => o.life > 0);
+    if (over) { endT -= dt; if (endT <= 0) g.finish(); return; } // 승자 점프 연출 1.5초 뒤 종료(팡파르는 셸이 울림)
+    if (P.some(p => p.human) && !P.some(p => p.human && !p.out)) dt *= 2; // 사람 전원 탈락 뒤 관전 2배속(§2 규칙 유지)
+    elapsed += dt;
+    P.forEach((p, i) => { // 굳기: 누르는 즉시, 떼면 즉시(시각 효과만 0.1s 페이드). 탈락·경직 중엔 입력 무시. B·방향 입력은 원작처럼 무시
+      p.stun = Math.max(0, p.stun - dt); p.flash = Math.max(0, p.flash - dt); p.hpFlash = Math.max(0, p.hpFlash - dt);
+      let want = false;
+      if (!p.out && p.stun <= 0) {
+        if (p.human) want = g.p(i).down('a');
+        else { const r = p.cr, end = r ? Math.max(r.press + r.hold, r.impact + 0.04) : 0; if (r && elapsed >= end) p.cr = null; want = !!(r && !r.miss && elapsed >= r.press && elapsed < end) || !!(p.fake && elapsed >= p.fake[0] && elapsed < p.fake[0] + p.fake[1]); }
+      }
+      if (want && !p.hard) { p.pressAt = elapsed; p.taps = p.taps.filter(t => t > elapsed - TAPWIN).concat(elapsed); p.flash = 0.1; p.human ? sfx.tap() : sfx.beep(1200, 0.03, 'triangle', 0.02); }
+      if (!want && p.hard) p.relAt = elapsed;
+      p.hard = want; p.vis = want ? 1 : Math.max(0, p.vis - dt / 0.1);
+      if (p.hard) { p.hp -= DRAIN * dt; if (p.hp <= 0) die(p); }
+    });
+    for (const r of rocks) { // 착지 판정: 그 프레임에 굳어 있으면 방어. 관용(§4): 착지 50ms 안에 누른 단발 tap(300ms 내 누름 1회)만 — 연타는 관용 없음, 아니면 피격 → hit 0.2s + dizzy 0.5s
+      if (r.done || elapsed < r.impact) continue;
+      r.done = true; const p = r.p; p.rock = null;
+      if (p.hard || (p.pressAt >= r.impact - TOL && p.relAt >= p.pressAt && p.taps.filter(t => t > elapsed - TAPWIN).length <= 1)) { p.blocks++; burst(r, true); sfx.hit(); if (p.human) pop('방어!', p.x, HEAD - 50, palette.blue); }
+      else { p.hp -= r.dmg; p.stun = STUN; p.hpFlash = 0.35; p.hard = false; p.vis = 0; shake = 0.2; burst(r, false); sfx.bad(); if (p.hp <= 0) die(p); }
+    }
+    rocks = rocks.filter(r => !r.done);
+    if (elapsed >= nextWave) spawnWave();
+    const alive = P.filter(p => !p.out), lastOut = Math.max(-1, ...P.filter(p => p.out).map(p => p.outAt));
+    const pending = rocks.some(r => r.impact <= lastOut + TIE); // 같은 웨이브(≤0.2s)에 함께 깔리면 무승부 → 그 바위가 떨어질 때까지 판정 보류
+    if ((alive.length <= 1 && !pending) || elapsed >= LIMIT) {
+      over = true; endT = 1.5; rocks = []; timeout = alive.length > 1;
+      winner = alive.length === 1 ? alive[0] : timeout ? alive.sort((a, b) => b.hp - a.hp)[0] : null;
+      P.forEach(p => { p.hard = false; p.vis = 0; }); if (winner) sfx.good();
+    }
+  },
+  draw(ctx) {
+    ctx.save(); if (shake > 0) { const a = 4 * shake / 0.2; ctx.translate(rand(-a, a), rand(-a, a)); }
+    bg(ctx, g.W, g.H, '#D5E0E8', '#EEE8DE'); // 청회색 하늘 → 회갈색 암석 절벽 → 밝은 회색 돌바닥
+    for (let row = 0; row < 6; row++) for (let c = -1; c < 8; c++) { const w = 132, x = c * w + (row % 2) * 66, y = 118 + row * 48; rr(ctx, x + 3, y + 3, w - 6, 42, 7, (row * 3 + c) % 4 === 0 ? '#6B5A4A' : (row + c) % 2 ? '#7E6B5A' : '#8A7663'); }
+    rr(ctx, 0, 112, g.W, 10, 0, '#A79582');
+    ctx.fillStyle = '#B9B1A6'; ctx.fillRect(0, FOOT + 4, g.W, g.H - FOOT); rr(ctx, 0, FOOT + 2, g.W, 8, 0, '#D2CABE');
+    ctx.strokeStyle = 'rgba(58,36,48,.08)'; ctx.lineWidth = 2; [430, 470, 510].forEach(y => { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(g.W, y); ctx.stroke(); });
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; for (let i = 0; i < 14; i++) { const x = (i * 97 + g.time * (8 + i % 3 * 4)) % g.W, y = 130 + (i * 53) % 250 + Math.sin(g.time + i) * 6; ctx.beginPath(); ctx.arc(x, y, 1.5 + i % 2, 0, 7); ctx.fill(); }
+    for (const r of rocks) { // 그림자: 선형으로 커지고 진해짐(6px→r×1.1, α .15→.55) — 유일한 정확한 타이밍 단서
+      if (elapsed < r.start) continue; const k = clamp((elapsed - r.start) / r.fall, 0, 1), rx = lerp(6, r.r * 1.1, k);
+      ctx.fillStyle = `rgba(20,14,10,${lerp(0.15, 0.55, k)})`; ctx.beginPath(); ctx.ellipse(r.p.x, FOOT + 8, rx, rx * 0.38, 0, 0, 7); ctx.fill();
+    }
+    P.forEach((p, i) => {
+      if (p.out) { if (g.state() === 'end') return; // 탈락: 회색 sleep 포즈로 주저앉음(α .55) + 머리 위 "탈락" 배지
+        drawFlamingo(ctx, p.x, FOOT - 24, SC, 'sleep', g.time + i, '#B9B0BA', { rot: 0.35, alpha: 0.55 });
+        rr(ctx, p.x - 27, HEAD - 24, 54, 22, 11, palette.red); text(ctx, '탈락', p.x, HEAD - 8, 13, palette.white); return;
+      }
+      const hitP = p.stun > STUN - 0.2, pose = hitP ? 'hit' : p.stun > 0 ? 'dizzy' : p.vis > 0 ? 'harden' : winner === p ? 'jump' : 'idle';
+      const x = p.x + (p.hard ? Math.sin(g.time * 90) * 1.5 : 0), y = FOOT - 54 - (winner === p ? Math.abs(Math.sin(g.time * Math.PI * 2)) * 30 : 0); // 굳으면 미세 진동, 승자는 0.5s 주기 점프
+      ctx.save(); ctx.translate(x, FOOT); if (hitP) ctx.scale(1.15, 0.72); // 피격: 납작하게 눌림
+      drawFlamingo(ctx, 0, y - FOOT, SC, pose, g.time + i, p.color);
+      if (p.flash > 0) drawFlamingo(ctx, 0, y - FOOT, SC, pose, g.time + i, '#FFFFFF', { alpha: p.flash / 0.1 * 0.85 }); // 굳는 순간 흰 플래시 0.1s
+      ctx.restore();
+      if (pose === 'dizzy') for (let k = 0; k < 3; k++) { const a = g.time * 7 + k * 2.1; text(ctx, '★', x + 29 + Math.cos(a) * 24, y - 56 + Math.sin(a) * 7, 13, palette.gold); }
+    });
+    for (const r of rocks) { // 바위: 뒤쪽 위(y −60, 0.4배)에서 커지며 다가옴(easeInQuad), 회전 2 rad/s
+      if (elapsed < r.start) continue; const k = clamp((elapsed - r.start) / r.fall, 0, 1);
+      drawRock(ctx, r.p.x, lerp(-60, HEAD - r.r * 0.6, k * k), r.r * lerp(0.4, 1, k), k * r.fall * 2, r.verts);
+    }
+    for (const q of parts) {
+      ctx.save(); ctx.globalAlpha = clamp(q.life * 2.5, 0, 1);
+      if (q.k === 'ring') { const w = 10 + q.r * 1.6 * (1 - q.life / 0.4); ctx.strokeStyle = 'rgba(120,105,90,.6)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(q.x, q.y, w, w * 0.35, 0, 0, 7); ctx.stroke(); }
+      else if (q.k === 'shard') { ctx.translate(q.x, q.y); ctx.rotate(q.rot); ctx.fillStyle = q.c; ctx.beginPath(); ctx.moveTo(-q.s, q.s * 0.6); ctx.lineTo(q.s, q.s * 0.4); ctx.lineTo(0, -q.s); ctx.closePath(); ctx.fill(); }
+      else { ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, q.s, 0, 7); ctx.fill(); }
+      ctx.restore();
+    }
+    for (const o of pops) { ctx.save(); ctx.globalAlpha = clamp(o.life * 2, 0, 1); text(ctx, o.s, o.x, o.y, 22, palette.white); text(ctx, o.s, o.x, o.y - 1, 22, o.c); ctx.restore(); }
+    P.forEach((p, i) => { // 하단 HUD(§11-8): 배지 + "HP" 라벨 + 막대 150×14(60% 초록 / 30~60% 노랑 / <30% 빨강, 숫자 없음) + 상태
+      const x = p.x, hp = clamp(p.hp, 0, MAXHP), won = winner === p;
+      rr(ctx, x - 90, 428, 180, 96, 12, 'rgba(58,36,48,.14)'); drawPlayerTag(ctx, x, 446, i);
+      text(ctx, 'HP', x - 88, 482, 14, palette.ink, 'left'); rr(ctx, x - 64, 470, 150, 14, 7, p.out ? '#8E8884' : '#4A4340');
+      if (!p.out && hp > 0) rr(ctx, x - 64, 470, 150 * hp / MAXHP, 14, 7, hp >= 60 ? palette.green : hp >= 30 ? palette.gold : palette.red);
+      if (p.hpFlash > 0) rr(ctx, x - 64, 470, 150, 14, 7, `rgba(255,90,95,${p.hpFlash / 0.35 * 0.8})`);
+      if (p.out) text(ctx, '탈락', x, 509, 15, palette.red); else if (won) text(ctx, '승리!', x, 509, 15, palette.pinkDark); else text(ctx, `방어 ${p.blocks}`, x, 509, 14, palette.ink, 'center', 'bold');
+    });
+    text(ctx, `생존 ${P.filter(p => !p.out).length}/4`, g.W / 2, 36, 22, palette.ink);
+    if (over && g.state() !== 'end') { // 종료 연출: 중앙 큰 "○P 승리!" (무승부 / 120초 상한 문구 포함)
+      const s = winner ? `${winner.name} 승리!` : '무승부!'; ctx.font = 'bold 64px sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 8; ctx.strokeStyle = palette.pinkDark; ctx.fillStyle = palette.white; ctx.strokeText(s, g.W / 2, 210); ctx.fillText(s, g.W / 2, 210);
+      if (timeout) text(ctx, '120초 경과 · 남은 HP 순', g.W / 2, 245, 18, palette.ink);
+    }
+    else if (g.state() === 'play' && (elapsed < 3 || !P.some(p => p.human && !p.out))) { // 아나운서 자막 한 줄(첫 3초) / 사람 전원 탈락 뒤 관전 안내 — 바위 경로 위라 반투명 배경
+      const spect = elapsed >= 3; rr(ctx, g.W / 2 - 200, 96, 400, 26, 13, 'rgba(255,255,255,.6)');
+      text(ctx, spect ? '2배속 관전 중… 남은 CPU가 마지막 1명까지 겨룹니다' : '그림자를 보고 닿는 순간에만 딱딱하게!', g.W / 2, 115, spect ? 15 : 18, spect ? palette.ink : palette.pinkDark, 'center', spect ? 'normal' : 'bold');
+    }
+    ctx.restore();
+  },
+  result() { // 생존자 10000+남은 HP, 탈락자 round(탈락 초×10). 같은 웨이브(≤0.2s)에 함께 탈락하면 같은 점수(=같은 순위)
+    const sc = P.map(p => p.out ? Math.round(p.outAt * 10) : 10000 + Math.max(0, Math.round(p.hp)));
+    const outs = P.filter(p => p.out).sort((a, b) => a.outAt - b.outAt); let grp = [];
+    const flush = () => { const v = Math.round(grp[grp.length - 1].outAt * 10); grp.forEach(p => sc[p.i] = v); grp = []; };
+    outs.forEach(p => { if (grp.length && p.outAt - grp[0].outAt > TIE) flush(); grp.push(p); }); if (grp.length) flush();
+    const grp0 = P.filter(p => p.out && sc[p.i] === Math.max(...sc)).length;
+    const hp = winner ? Math.max(0, Math.round(winner.hp)) : 0;
+    const txt = timeout ? `120초 경과 · ${winner.name} 남은 HP ${hp}` : winner ? `${winner.name} 승리! 남은 HP ${hp}` : `무승부! ${grp0}명이 같은 순간 쓰러졌어요`;
+    return { scores: sc, text: txt };
+  } });
+</script></body></html>

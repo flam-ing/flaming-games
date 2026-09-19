@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>플라밍고 스플래시 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script><script>document.write('<link rel="stylesheet" href="../common/view3d.css">');</script></head>
+<body><div class="wrap"><canvas id="game" aria-label="플라밍고 스플래시 경기 화면"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: A 버튼을 꾹 눌렀다 떼면 점프 · 착지 순간 다시 A 버튼</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>document.write('<script src="../common/view3d.js"><\/script>');</script>
+<script>
+const stadiumView = STADIUM_3D.create('splash', () => g);
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, bg, text, rr, rand, clamp, lerp, slots } = STADIUM;
+// 원작 Magikarp's Splash (specs/splash.md §3~4): A 홀드 h초 → 릴리즈 시 v0 = lerp(700,1600,h/0.20) px/s, G = 5000, 종 타격 시 반동 vy = +450, 공중 입력 무효, B 무시
+// 머리 상단(GROUND+y-HEAD)에서 종 하단까지 240px → 닿는 최소 홀드 ≈ 0.19초, 0.20초 이상은 시간 손실만. 최적 사이클 ≈ 0.65초 → 20초에 28점(60fps 시뮬), 착지마다 0.1초 늦으면 24, 0.2초면 21
+const GROUND = 460, BEAM = 100, SW_Y = 158, HEAD = 62, G = 5000, MAXH = 0.20, BOUNCE = 450, LIMIT = 25, END = 20, BEAT = 0.8, BUF = 0.12;
+const HIT_Y = SW_Y - GROUND + HEAD; // -240
+const laneX = i => 150 + i * 220; // 4레인 고정, 왼쪽부터 1P→4P
+const CRY = [660, 590, 720, 540]; // 점프 "꽥" 주파수 — 원작 잉어킹 울음이 4마리 겹치는 소음 (§9)
+// CPU 행동 모델 (§8): d = 착지→홀드 시작 지연 [평균, σ], h = 홀드 목표 [평균, σ] (초), m = 실수(탭) 확률. 시뮬 중앙값 보통 16점 · 어려움 21점
+const AI = { normal: { d: [.25, .12], h: [.215, .025], m: .12 }, hard: { d: [.11, .06], h: [.21, .02], m: .06 } };
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(Math.PI * 2 * Math.random());
+let g, P, parts, ripples, pops, caption, elapsed, leader, capCD, over; // elapsed = 숨은 20초 시계 (원작처럼 타이머 비표시), over = '끝!' 비트 잔여
+
+function say(s) { if (capCD > 0 || over >= 0) return; caption = { s, life: 2.4 }; capCD = 2; } // 캡션은 2초에 1번
+function pop(x, y, s, c) { pops.push({ x, y, s, c, life: 0.6 }); }
+function spray(x, y, n, c, up) { for (let k = 0; k < n; k++) parts.push({ x: x + rand(-14, 14), y, vx: rand(-170, 170), vy: rand(-up, -up * 0.25), life: rand(0.35, 0.6), c }); }
+function aiPlan(p) { // 다음 점프의 지연·홀드를 정규분포에서 새로 뽑는다 (지연 최소 40ms, 후반 보통은 실수 +5%p — 지친 연출)
+  const a = AI[p.lv], miss = a.m + (g.state() === 'play' && elapsed > END - 10 && p.lv === 'normal' ? 0.05 : 0);
+  p.wait = Math.max(0.04, gauss(a.d[0], a.d[1])); p.target = Math.random() < miss ? rand(0.04, 0.15) : Math.max(0.03, gauss(a.h[0], a.h[1]));
+}
+function startHold(p) { p.holding = true; p.holdT = 0; }
+function jump(p) { // 뗌 = 점프. 홀드 시간에 비례한 초속도, 공중에서는 입력 무효. 성공·실패·CPU 무관 모두 "꽥"
+  const v0 = lerp(700, 1600, clamp(p.holdT / MAXH, 0, 1));
+  p.holding = false; p.air = true; p.vy = -v0; p.hitDone = false; p.apex = false;
+  spray(p.x, GROUND + 30, 5, palette.water, 160); sfx.beep(CRY[p.i], 0.06, 'square', p.human ? 0.08 : 0.05);
+}
+function ring(p) { // 종 타격: 곧바로 아래로 튕기고 카운터 +1 (점프당 1회). 종은 위로 눌리며 흔들리고 숫자는 딸깍 넘어간다
+  p.hitDone = true; p.vy = BOUNCE; p.dizzy = 0.2; p.press = 0.25; p.swingV += rand(5, 8) * (Math.random() < 0.5 ? -1 : 1);
+  p.count = Math.min(99, p.count + 1); p.streak++; p.flash = 0.2; p.flip = 0.15; sfx.good();
+  pop(p.x + 36, SW_Y + 26, '+1');
+  for (let k = 0; k < 6; k++) parts.push({ x: p.x, y: SW_Y, vx: rand(-140, 140), vy: rand(-160, 40), life: 0.35, c: palette.gold });
+  if (p.streak % 5 === 0 && (p.human || p.i === leader)) say(`${p.name} 대단한 연속 스플래시!`);
+}
+function land(p, dt) { // 착지: 물방울 + 파문. 경직 없음 — 공중에서 새로 누른 A를 유지 중이면 이 프레임부터 바로 홀드
+  p.y = 0; p.vy = 0; p.air = false; p.landT = 0.03; if (!p.hitDone) p.streak = 0;
+  spray(p.x, GROUND + 34, 8, palette.water, 260); ripples.push({ x: p.x, y: GROUND + 38, r: 6, life: 0.6 }); if (p.human) sfx.pop();
+  if (p.human) { if (p.pressAir) { p.pressAir = false; if (elapsed - p.pressT <= BUF) { startHold(p); p.holdT = dt; } else p.armed = false; } } else aiPlan(p); // 착지 0.12초 이내 누름만 버퍼 인정(착지 프레임도 홀드에 산입), 너무 이르면 뗐다 다시 눌러야 함
+}
+
+
+function drawScorePanel(ctx, p, value, detail, progress) {
+  const x = 16 + p.i * 235;
+  rr(ctx, x, 51, 223, 67, 12, 'rgba(25,51,62,.92)');
+  rr(ctx, x, 51, 5, 67, 2, p.color);
+  drawPlayerTag(ctx, x + 48, 72, p.i);
+  text(ctx, value, x + 207, 81, 24, '#FFF6EA', 'right');
+  text(ctx, detail, x + 16, 104, 12, '#D2E8E3', 'left', 'normal');
+  if (progress != null) { rr(ctx, x + 118, 98, 87, 5, 2, '#526D77'); rr(ctx, x + 118, 98, Math.max(0, Math.min(1, progress)) * 87, 5, 2, p.color); }
+}
+function drawCaption3D(ctx, message) {
+  rr(ctx, 200, 490, 560, 32, 16, 'rgba(25,51,62,.88)');
+  text(ctx, message, 480, 511, 16, '#FFF6EA');
+}
+
+function drawStadium3D(ctx) {
+  if (!P || !stadiumView.draw(ctx, { time: g.time, players: P, ended: g.state() === 'end' })) return false;
+  P.forEach(p => drawScorePanel(ctx, p, String(p.count).padStart(2, '0'), p.holding ? (p.holdT >= MAXH ? '지금 떼요!' : '힘 모으는 중') : p.air ? '점프!' : 'A 꾹 눌렀다 떼기', p.holding ? p.holdT / MAXH : 0));
+  stadiumView.labels(ctx, P);
+  if (over >= 0 && g.state() === 'play') { text(ctx, '끝!', 480, 290, 90, palette.white); }
+  if (caption && g.state() !== 'end') drawCaption3D(ctx, caption.s);
+  else if (g.state() === 'play') drawCaption3D(ctx, '머리 위 종을 치세요!  ·  착지 순간 다시 A 버튼');
+  return true;
+}
+
+g = Game({ id: 'splash', title: '플라밍고 스플래시', howto: ['A 버튼을 길게 누르면 힘이 모여요', 'A 버튼을 떼면 점프! 머리 위 종을 치면 1점', '착지 순간 바로 A 버튼을 눌러 시간을 아끼세요'], duration: 0,
+  init() {
+    // 항상 4마리. 사람이면 입력, 아니면 CPU — 2P 보통 · 3P 보통/어려움 · 4P 어려움 (1명이 3 CPU를 상대해도 잘하면 이길 수 있는 배정)
+    P = slots().map((s, i) => ({ ...s, x: laneX(i), y: 0, vy: 0, air: false, holding: false, holdT: 0, count: 0, streak: 0, hitDone: false, apex: false, armed: false, pressAir: false,
+      landT: 0, dizzy: 0, flash: 0, flip: 0, press: 0, swing: 0, swingV: 0, lv: 'normal', wait: 0, target: 0, pressT: 0 }));
+    const o = [1, 2, 3].sort(() => Math.random() - 0.5); P[o[0]].lv = 'hard'; if (Math.random() < 0.5) P[o[1]].lv = 'hard'; // 2P~4P 중 무작위 1~2마리가 어려움 (4P 고정 아님)
+    P.forEach(p => { if (!p.human) { aiPlan(p); p.wait *= 1.5; } }); // 첫 점프는 지연 ×1.5 — 4마리 리듬이 어긋나게
+    parts = []; ripples = []; pops = []; caption = null; elapsed = 0; leader = -1; capCD = 0; over = -1;
+  },
+  update(dt) {
+    elapsed += dt; capCD -= dt; if (elapsed > LIMIT) g.finish(); // 안전장치
+    if (over < 0 && elapsed >= END) { over = BEAT; caption = null; sfx.beep(440, 0.3, 'triangle', 0.1); } // 20초: 입력 중지 + '끝!' 0.8초
+    if (over >= 0) { over -= dt; if (over < 0) g.finish(); }
+    for (const p of P) {
+      if (over >= 0) { p.holding = false; } else if (p.human) {
+        const k = g.p(p.i), d = k.down('a'), h = k.hit('a');
+        if (!p.armed) { if (!d) p.armed = true; } // 시작 전부터 누르고 있던 선입력은 무효 — 한 번 떼야 함
+        else if (p.air) { if (h) { p.pressAir = true; p.pressT = elapsed; } if (!d) p.pressAir = false; } // 공중 입력은 착지 버퍼로만 인정 (착지 전에 떼면 무효)
+        else if (p.holding) { if (!d) jump(p); } // 릴리즈 = 점프. 떼기 전엔 절대 안 뜀
+        else if (h) startHold(p);
+      } else if (!p.air && over < 0) {
+        if (p.holding) { if (p.holdT >= p.target) jump(p); }
+        else { p.wait -= dt; if (p.wait <= 0) startHold(p); }
+      }
+      if (p.holding) p.holdT += dt;
+      if (p.air) {
+        p.y += p.vy * dt + 0.5 * G * dt * dt; p.vy += G * dt; // 등가속 정확 적분 — 정점 높이가 프레임레이트에 안 흔들리게
+        if (!p.hitDone && p.vy < 0 && p.y <= HIT_Y + 1) ring(p);
+        if (!p.hitDone && !p.apex && p.vy >= 0) { p.apex = true; if (p.y < -90 && !pops.some(o => o.s === '…' && o.x === p.x + 30)) pop(p.x + 30, GROUND + p.y - 74, '…', palette.ink); } // 못 닿음: 작은 "…" 만
+        if (p.y >= 0) land(p, dt);
+      }
+      p.landT -= dt; p.dizzy -= dt; p.flash -= dt; p.flip -= dt; p.press -= dt;
+      p.swingV -= p.swing * 40 * dt; p.swingV *= 1 - dt * 2; p.swing += p.swingV * dt;
+    }
+    for (const q of parts) { q.vy += 900 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0);
+    for (const r of ripples) { r.r += 90 * dt; r.life -= dt; } ripples = ripples.filter(r => r.life > 0);
+    for (const o of pops) { o.y -= 60 * dt; o.life -= dt; } pops = pops.filter(o => o.life > 0);
+    if (caption) { caption.life -= dt; if (caption.life <= 0) caption = null; }
+    const max = Math.max(...P.map(p => p.count)), tops = P.filter(p => p.count === max); // 아나운서: 단독 선두가 바뀌면 한 줄
+    if (max >= 3 && tops.length === 1 && tops[0].i !== leader) { leader = tops[0].i; capCD = 0; say(`${tops[0].name}가 앞서 나갑니다!`); }
+  },
+  draw(ctx) {
+    if (drawStadium3D(ctx)) return;
+    bg(ctx, g.W, g.H, palette.sky, '#FFE3EE');
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    for (let i = 0; i < 5; i++) { const cx = (i * 210 + g.time * 12) % (g.W + 120) - 60, cy = 200 + (i % 3) * 32; ctx.beginPath(); ctx.arc(cx, cy, 22, 0, 7); ctx.arc(cx + 24, cy - 8, 26, 0, 7); ctx.arc(cx + 50, cy, 20, 0, 7); ctx.fill(); }
+    // 뒤쪽 얕은 물가 + 모래빛 지면 (§6 추정 배경)
+    ctx.fillStyle = palette.water; ctx.fillRect(0, 372, g.W, 108);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; for (let i = 0; i < 12; i++) { const wx = (i * 90 + Math.sin(g.time * 2 + i) * 12 + g.W) % g.W; ctx.beginPath(); ctx.ellipse(wx, 392 + (i % 3) * 26, 30, 4, 0, 0, 7); ctx.fill(); }
+    ctx.fillStyle = palette.sand; ctx.beginPath(); ctx.moveTo(0, g.H); for (let x = 0; x <= g.W; x += 32) ctx.lineTo(x, 474 + Math.sin(x * 0.05 + g.time) * 4); ctx.lineTo(g.W, g.H); ctx.fill();
+    // 나무 기둥 + 들보 (놀이공원 힘측정기 받침)
+    rr(ctx, 30, BEAM - 12, 16, 482 - BEAM, 5, '#8C5A3C'); rr(ctx, g.W - 46, BEAM - 12, 16, 482 - BEAM, 5, '#8C5A3C');
+    rr(ctx, 18, BEAM - 16, g.W - 36, 16, 6, '#8C5A3C'); rr(ctx, 18, BEAM - 16, g.W - 36, 5, 3, '#B07A55');
+    if (!P) return;
+    const ended = g.state() === 'end', max = Math.max(...P.map(p => p.count));
+    for (const p of P) {
+      // 줄 + 종: 들보에 매달려 흔들리고, 맞으면 위로 10px 눌린다
+      const lift = Math.max(0, p.press) / 0.25 * 10;
+      ctx.save(); ctx.translate(p.x, BEAM); ctx.rotate(p.swing * 0.12);
+      ctx.strokeStyle = '#6B4A2E'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, SW_Y - BEAM - 36 - lift); ctx.stroke();
+      ctx.translate(0, SW_Y - BEAM - lift); ctx.fillStyle = p.press > 0.15 ? palette.white : palette.gold;
+      ctx.beginPath(); ctx.moveTo(-19, -4); ctx.quadraticCurveTo(-19, -38, 0, -38); ctx.quadraticCurveTo(19, -38, 19, -4); ctx.closePath(); ctx.fill();
+      rr(ctx, -23, -6, 46, 8, 4, '#D9A63C'); ctx.fillStyle = '#7A5A1E'; ctx.beginPath(); ctx.arc(0, 4, 5, 0, 7); ctx.fill(); ctx.restore();
+      // 카운터(점수판) = HUD: 들보 위 플레이어 색 박스 + 2자리 플립 숫자, 선두는 금색 테두리 (3P 박스가 금색이라 점멸·테두리 색 예외)
+      drawPlayerTag(ctx, p.x, 14, p.i);
+      rr(ctx, p.x - 44, 26, 88, 52, 10, p.flash > 0 ? (p.i === 2 ? palette.white : palette.gold) : p.color);
+      if (max > 0 && p.count === max) { ctx.strokeStyle = p.i === 2 ? palette.ink : palette.gold; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(p.x - 44, 26, 88, 52, 10); ctx.stroke(); }
+      rr(ctx, p.x - 30, 36, 60, 34, 6, palette.ink);
+      const k = p.flip > 0 ? Math.abs(Math.cos(Math.PI * p.flip / 0.15)) : 1, n = p.flip > 0.075 ? p.count - 1 : p.count;
+      ctx.save(); ctx.translate(p.x, 53); ctx.scale(1, Math.max(0.08, k)); text(ctx, String(n).padStart(2, '0'), 0, 10, 28, palette.white); ctx.restore();
+      // 플라밍고 포즈 (§12): 대기 idle · 홀드 harden(웅크려 내려앉고 부들부들) · 상승 jump · 정점 이후 fly · 타격 직후 dizzy · 착지 hit
+      let pose = p.air ? (p.dizzy > 0 ? 'dizzy' : p.vy < 0 ? 'jump' : 'fly') : p.holding ? 'harden' : p.landT > 0 ? 'hit' : 'idle';
+      let fx = p.x, fy = GROUND + p.y - 8;
+      const charged = p.holding && p.holdT >= 0.19 && !ended;
+      if (p.holding && !ended) { // 힘 모으기: 다리를 접고 땅에 붙어 떨림, 발밑 먼지
+        fx += rand(-1, 1) * (charged ? 2.5 : 1.2); fy += 20; ctx.fillStyle = 'rgba(120,100,80,0.35)';
+        for (let j = -1; j <= 1; j++) { ctx.beginPath(); ctx.arc(p.x + j * 13 + Math.sin(g.time * 30 + j) * 3, GROUND + 36, j ? 4 : 6, 0, 7); ctx.fill(); }
+      }
+      if (ended) { pose = p.count === max ? 'jump' : 'sleep'; fy = GROUND - 8 - (p.count === max ? Math.abs(Math.sin(g.time * 5)) * 40 : 0); } // 결과: 1위(공동 포함) 튀고 나머지 축 처짐
+      if (pose === 'harden') { ctx.strokeStyle = p.color; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(p.x, GROUND + 36, 40, 10, 0, 0, 7); ctx.stroke(); } // 홀드 중 회색 몸 대신 발밑 플레이어 색 링으로 구분
+      drawFlamingo(ctx, fx, fy, 1.3, pose, g.time + p.i, p.color);
+      if (charged) { ctx.strokeStyle = palette.gold; ctx.lineWidth = 2.5; [-18, 0, 18].forEach((dx, j) => { const y0 = fy - 40 - Math.abs(Math.sin(g.time * 30 + j)) * 6; ctx.beginPath(); ctx.moveTo(fx + dx, y0); ctx.lineTo(fx + dx * 1.4, y0 - 12); ctx.stroke(); }); }
+      if (p.human && g.state() === 'play' && elapsed < 6 && p.count === 0 && !p.air) text(ctx, p.holding ? (charged ? '지금 떼요!' : '꾹…') : 'A 버튼 꾹 눌렀다 떼기!', p.x, GROUND - 80, 15, palette.pinkDark);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; for (const r of ripples) { ctx.globalAlpha = r.life; ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r * 2, r.r * 0.5, 0, 0, 7); ctx.stroke(); }
+    for (const q of parts) { ctx.globalAlpha = clamp(q.life * 2, 0, 1); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, 3.5, 0, 7); ctx.fill(); }
+    for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 2); if (o.c) text(ctx, o.s, o.x, o.y, 20, o.c); else { text(ctx, o.s, o.x, o.y, 24, palette.white); text(ctx, o.s, o.x, o.y - 1, 24, palette.gold); } }
+    ctx.globalAlpha = 1;
+    if (over >= 0 && g.state() === 'play') { ctx.save(); ctx.globalAlpha = Math.min(1, over * 4 + 0.2); ctx.font = 'bold 120px sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 8; ctx.strokeStyle = palette.pinkDark; ctx.fillStyle = palette.white; ctx.strokeText('끝!', g.W / 2, g.H / 2 + 20); ctx.fillText('끝!', g.W / 2, g.H / 2 + 20); ctx.restore(); }
+    if (caption && g.state() !== 'end') { ctx.globalAlpha = Math.min(1, caption.life); rr(ctx, g.W / 2 - 170, 500, 340, 30, 15, 'rgba(58,36,48,0.75)'); text(ctx, caption.s, g.W / 2, 521, 17, palette.cream); ctx.globalAlpha = 1; }
+  },
+  result() { // 동점은 같은 점수를 그대로 넘겨 셸이 공동 순위로 처리 (원작 Kids Club 동점 = 모두 승리)
+    const max = Math.max(...P.map(p => p.count)), w = P.filter(p => p.count === max).map(p => p.name);
+    return { scores: P.map(p => p.count), text: max === 0 ? '아무도 종을 못 울렸어요!' : `${w.length > 1 ? '공동 승자' : '승자'} ${w.join('·')} — 종 ${max}번!` };
+  } });
+</script></body></html>

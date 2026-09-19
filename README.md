@@ -5,7 +5,7 @@
 [![GitHub Pages](https://img.shields.io/badge/Deployment-GitHub%20Pages-brightgreen?style=for-the-badge&logo=github)](https://flam-ing.github.io/flaming-games/)
 
 > **대한민국의 1인 인디 해커 및 게임 개발자를 위한 플라밍고 컨셉의 레트로 2D/3D 웹 게임 컬렉션 통합 저장소입니다.**  
-> Chiptune WebAudio 사운드, 절차적 픽셀 아트, Three.js 3D 복셀 렌더러 등 외부 에셋 없이 순수 웹 브라우저 기술로만 설계된 18가지 시그니처 플라밍고 게임들이 수록되어 있습니다.
+> Chiptune WebAudio 사운드, 절차적 픽셀 아트, Three.js 3D 복셀 렌더러 등 외부 에셋 없이 순수 웹 브라우저 기술로만 설계된 기존 18개 게임에 Flamingo Stadium의 21종 미니게임 컬렉션을 더했습니다. 총 19개 진입점, 39개의 플레이 가능한 게임을 담고 있습니다.
 
 ---
 
@@ -35,6 +35,7 @@ graph TD
     A --> Q["16. Flamingo Football Rescue (축구 슈팅)"]
     A --> R["17. Flamingo Desktop Destroyer (바탕화면 부수기)"]
     A --> S["18. Flamingo Building Breaker (빌딩 철거)"]
+    A --> T["19. Flamingo Stadium (21종 미니게임 · 3종 3D)"]
 ```
 
 ### 1. ♟️ [Flamingo Chess](./flamingo-chess)
@@ -109,18 +110,35 @@ graph TD
 * **장르**: 플라밍고 도심 빌딩 철거 — 건물 부수기 2D 액션 게임
 * **🔗 플레이 하기**: **[Flamingo Building Breaker 플레이](https://flaming-games.vercel.app/flamingo-building-breaker/)** · [소스](https://github.com/flam-ing/flamingo-building-breaker)
 
+### 19. 🏟️ [Flamingo Stadium](./flamingo-stadium)
+* **장르**: 포켓몬 스타디움 1·2 키즈 클럽에서 영감받은 21종의 로컬 멀티플레이 미니게임. 한 키보드로 1~4명이 함께하며 빈자리는 CPU가 채웁니다.
+* **3D 리메이크**: 플라밍고 스플래시, 달려라 플라밍고, 빙글빙글 링아웃. 기존 규칙을 유지하면서 3D 경기장과 2D 전환을 제공합니다. 나머지 18종은 클래식 2D입니다.
+* **진입 경로**: [`flamingo-stadium/index.html`](./flamingo-stadium/index.html). 배포 후 포털의 Stadium 배너 또는 `/flamingo-stadium/`에서 진입합니다.
+* **이관 출처**: [minwoo19930301/flamingo-stadium](https://github.com/minwoo19930301/flamingo-stadium)의 [`a48b22be4494773f5c6beefe3d6cc7718ac2f266`](https://github.com/minwoo19930301/flamingo-stadium/commit/a48b22be4494773f5c6beefe3d6cc7718ac2f266). 게임 21개·공용 코드·스펙·스크립트를 포함하며 원본 저장소는 그대로 유지합니다.
+* **개발 안내**: 통합본 수정은 이 저장소의 `flamingo-stadium/`에서 합니다. 키 설정·구조·검증은 [Stadium README](./flamingo-stadium/README.md)를 참고하세요.
+
 > 10–18번은 각 개별 저장소(`flam-ing/flamingo-*`)에서 빌드한 결과물을 이 저장소의 서브폴더로 배포합니다. 소스 수정은 개별 저장소에서, 배포는 여기서.
 
 ---
 
 ## 🛠️ 기술적 특징 (Technical Highlights)
 
-* **의존성 Zero**: 외부 이미지/오디오 에셋 파일 없이 Web Canvas API 및 WebAudio API 합성 기법 위주로 제작되어 로딩 속도가 극도로 빠릅니다.
-* **크로스 플랫폼 모바일 대응**: 모든 게임은 데스크톱 키보드 조작 외에 모바일 화면 터치 및 버추얼 조이스틱 D-Pad 조작을 기본 탑재하고 있습니다.
+* **절차적 그래픽과 사운드**: Canvas, WebAudio, Three.js·Babylon.js 등으로 제작했습니다. Stadium의 3D 렌더러는 라이선스와 함께 저장소에 보관한 Three.js를 사용하며 런타임 CDN 없이 실행됩니다.
+* **기기별 조작**: 기존 게임은 게임별 터치·키보드·마우스 조작을 지원합니다. Stadium은 키보드 1~4인 플레이가 기본이며, 3D를 추가한 세 종목에는 1P 터치 버튼도 있습니다.
 * **정적 호스팅 최적화**: Webpack/Vite 등의 복잡한 빌드 과정 없이 **Vercel** / GitHub Pages / Cloudflare Pages로 즉시 서브경로 호스팅 배포가 가능합니다.
 
 
 ---
+
+## 로컬 실행
+
+저장소 루트에서 다음 명령을 실행하고 `http://localhost:8000/`을 엽니다. Stadium은 `http://localhost:8000/flamingo-stadium/`에 있습니다.
+
+```sh
+python3 -m http.server 8000
+```
+
+3D ES 모듈을 사용하는 게임은 `file://`로 직접 열기보다 HTTP 서버에서 실행하세요. 별도 빌드 과정은 없습니다.
 
 ## 📄 라이선스 (License)
 

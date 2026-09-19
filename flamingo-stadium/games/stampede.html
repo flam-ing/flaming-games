@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>플라밍고 세기 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: 문제에 나온 플라밍고가 지나갈 때마다 A 버튼 한 번 · 다 지나간 뒤에도 잠깐 입력 가능</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, bg, text, rr, rand, clamp, lerp, slots } = STADIUM;
+// 원작 Streaming Stampede (specs/stampede.md): 5문제, 만점 10·10·20·20·40, 오차 1 = ½ · 2 = 1⁄10 · 3 이상 = 0점. 시간 제한 없음 — 5문제(+동점 결승) 뒤 g.finish().
+// A = 한 마리당 한 번(90ms 디바운스). 무리가 다 지나간 뒤에도 답 입력 유예(R1~4 4s · R5 6s, §2 3b). 1위 동점이면 추가 카운트 문제(최대 2회, §4). 리뷰어 조정 플래그는 아래 상수.
+const GRACE = [4, 4, 4, 4, 6], UTURN = false, ALLOW_UNDO = false, TIEBREAK = true, DEBOUNCE = .09, SAFETY = 300, MID = 480, W = 960;
+const CPU_LEVELS = [null, 'normal', 'hard', 'easy']; // 슬롯별 CPU 난이도(§5 기본: 2P 보통 · 3P 어려움 · 4P 쉬움)
+const LANES = [250, 300, 350], PX = [150, 370, 590, 810], TAP_HZ = [660, 740, 830, 920], ES = .42; // 레인 y · 플레이어 x · 카운트 효과음 주파수 · 무리 개체 scale
+const SP = [{ n: '빨간', c: palette.red, p: 'run' }, { n: '파란', c: palette.blue, p: 'run' }, { n: '노란', c: palette.gold, p: 'fly' }, { n: '초록', c: palette.green, p: 'ball' }, { n: '보라', c: palette.purple, p: 'hit' }, { n: '주황', c: '#FF9A3C', p: 'dig' }];
+const POSE_KO = { run: '달리는', fly: '나는', ball: '구르는', hit: '놀란', dig: '땅 파는' }, POSES = Object.keys(POSE_KO);
+const ROUNDS = [ // §5: 만점 · 정답 범위 · 총 개체 · 속도(px/s) · 등장 간격(s) · 2개/3개 동시 등장 확률 · 닮은 사물 수 · 개체 속도 편차
+  { full: 10, ans: [5, 8], tot: [12, 16], spd: 220, gap: [.55, .9], dbl: 0, tri: 0, obj: [0, 0], jit: .15 },
+  { full: 10, ans: [7, 11], tot: [16, 22], spd: 260, gap: [.4, .75], dbl: .2, tri: 0, obj: [0, 0], jit: .15 },
+  { full: 20, ans: [9, 14], tot: [22, 30], spd: 300, gap: [.3, .6], dbl: .35, tri: 0, obj: [3, 5], jit: .15 },
+  { full: 20, ans: [12, 18], tot: [28, 36], spd: 340, gap: [.25, .5], dbl: .5, tri: 0, obj: [2, 4], jit: .15 },
+  { full: 40, ans: [24, 34], tot: null, spd: 380, gap: [.2, .4], dbl: .6, tri: .2, obj: [0, 3], jit: .25 }];
+// CPU 모델(§8): 무리를 보지 않고 정답을 알고서 오차를 주입. pc = 정답 확률 [R1, R5], e1/e2 = ±1/±2 확률, rd = 반응 지연 [평균, σ], slip = 개체당 실수(한 번 더 누름), gr = 유예 활용 확률, fix = 실수 만회 확률
+const CPU = { easy: { pc: [.35, .1], e1: .35, e2: .2, rd: [.42, .14], slip: .06, gr: .5, fix: 0 }, normal: { pc: [.55, .25], e1: .3, e2: .12, rd: [.3, .1], slip: .03, gr: .5, fix: 0 },
+  hard: { pc: [.8, .55], e1: .3, e2: .05, rd: [.22, .07], slip: .015, gr: 1, fix: .6 }, vhard: { pc: [.9, .7], e1: .08, e2: .02, rd: [.15, .04], slip: .004, gr: 1, fix: .6 } };
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(6.2832 * Math.random());
+const ri = (a, b) => Math.floor(rand(a, b + 1)), pick = a => a[Math.floor(Math.random() * a.length)], shuffle = a => a.sort(() => Math.random() - .5);
+const kname = k => `${POSE_KO[k.p]} ${k.n}`, easeOut = u => 1 - (1 - u) * (1 - u);
+let g, P, R, ents, demo, phase, pt, elapsed, pops, tb, round; // R = 현재 문제, ents = 화면 위 개체, phase = question/go/stream/answer/reveal/gap/end, pt = 단계 경과 시간
+
+function otext(ctx, s, x, y, size, fill, stroke, lw = 6) { ctx.save(); ctx.font = `bold ${size}px sans-serif`; ctx.textAlign = 'center'; ctx.lineJoin = 'round'; ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.strokeText(s, x, y); ctx.fillStyle = fill; ctx.fillText(s, x, y); ctx.restore(); }
+function genRound(idx, isTB) { // 문제 유형 순서 고정(2차 보강 9): R1·R2 단일 종 / R3 같은 색 다른 포즈 + 닮은 사물 / R4 2종 합산 / R5 전부(사물은 정답에서 제외 — 핵심 함정)
+  const D = ROUNDS[isTB ? 1 : idx], all = idx === 4 && !isTB, answer = ri(...D.ans), nObj = ri(...D.obj);
+  const notT = (ts, k) => !ts.some(t => t.c === k.c && t.p === k.p); // 방해 종이 타깃과 완전히 같아지면 안 된다
+  const samePose = (ts, t) => pick(SP.filter(s => s.c !== t.c).map(s => ({ ...s, p: t.p })).filter(k => notT(ts, k)));
+  const sameColor = (ts, t) => pick(POSES.filter(p => p !== t.p).map(p => ({ ...t, p })).filter(k => notT(ts, k)));
+  let targets, decoys, q, say;
+  if (all) { targets = SP; decoys = []; q = '지나간 플라밍고 전부 몇 마리?'; say = '마지막! 플라밍고만 전부 다 세세요!'; }
+  else if (idx === 3) { const a = pick(SP), b = pick(SP.filter(s => s.p !== a.p)); targets = [a, b]; decoys = targets.map(t => Math.random() < .5 ? samePose(targets, t) : sameColor(targets, t)); q = `${kname(a)} + ${kname(b)}, 합쳐서 몇 마리?`; say = '이번엔 두 종류를 합쳐서!'; }
+  else { const t = idx === 2 ? pick([SP[2], SP[3]]) : pick(SP); targets = [t]; // R3는 닮은 사물(공·알)이 있는 초록 ball / 노랑 fly 중에서
+    decoys = [idx === 0 ? pick(SP.filter(s => s.c !== t.c && s.p !== t.p)) : (idx === 1 || isTB) ? samePose(targets, t) : sameColor(targets, t)];
+    q = `${isTB ? '동점 결승! ' : ''}${kname(t)} 플라밍고는 몇 마리?`; say = idx === 2 ? '닮은 것들이 섞여 있어요, 잘 보세요!' : `잘 보세요, ${kname(t)} 플라밍고만!`; }
+  const list = [], total = all ? answer + nObj : ri(...D.tot);
+  for (let k = 0; k < answer; k++) list.push({ kind: pick(targets), target: true });
+  for (let k = 0; k < nObj; k++) { const s = all ? pick(SP) : pick(targets); list.push({ kind: { obj: s.p === 'ball' ? 'ball' : 'egg', c: s.c }, target: false }); } // 사물은 반드시 타깃과 같은 색(2차 보강 10)
+  while (list.length < total) list.push({ kind: pick(decoys), target: false });
+  shuffle(list); let t = 0, prev = -1; // 등장 시각·레인: 같은 그룹은 서로 다른 레인, 직전 그룹의 레인은 피해 앞뒤 가림을 줄인다
+  for (let k = 0; k < list.length;) {
+    const n = Math.min(list.length - k, Math.random() < D.tri ? 3 : Math.random() < D.dbl ? 2 : 1), ls = shuffle([0, 1, 2].filter(l => n === 3 || l !== prev)).slice(0, n);
+    for (let j = 0; j < n; j++, k++) Object.assign(list[k], { t, lane: ls[j], x: 1010, y: LANES[ls[j]], v: D.spd * rand(1 - D.jit, 1 + D.jit), dir: -1, rot: 0, ph: rand(0, 6), grp: n, mid: false, ai: [0, 0, 0, 0] });
+    prev = ls[n - 1]; t += rand(...D.gap);
+  }
+  if (UTURN && idx >= 2 && !isTB) for (let k = ri(1, 2); k > 0; k--) pick(list).ut = { x: rand(300, 600), w: .4 };
+  return { idx, isTB, full: isTB ? 10 : D.full, answer, q, say, targets: all ? [] : targets, sched: list, all: list.slice(), st: 0, judged: false, grace: isTB ? 4 : GRACE[idx], len: t + 1070 / D.spd, k: isTB ? .25 : idx / 4 };
+}
+function aiPlan(p) { // 라운드 시작: 최종 답을 정하고 어느 개체에서 누를지 배정. 모자라면 타깃(동시 등장 개체 우선)을 건너뛰고, 넘치면 방해 개체(그것도 모자라면 임의 시점)에서도 누른다
+  const L = CPU[p.lv], pc = lerp(L.pc[0], L.pc[1], R.k), r = Math.random(); p.queue = []; p.skipNext = false; if (p.spec) return;
+  const e = (r < pc ? 0 : r < pc + L.e1 ? 1 : r < pc + L.e1 + L.e2 ? 2 : ri(3, 5)) * (Math.random() < .5 ? 1 : -1);
+  p.target = clamp(R.answer + e, 0, 99); p.useGrace = Math.random() < L.gr;
+  const T = shuffle(R.all.filter(x => x.target)).sort((a, b) => b.grp - a.grp), D = shuffle(R.all.filter(x => !x.target)), skip = Math.max(0, R.answer - p.target), extra = Math.max(0, p.target - R.answer);
+  const late = p.useGrace ? Math.min(T.length - skip, R.idx === 4 && L.fix ? ri(3, 6) : ri(1, 2)) : 0; p.lateN = late; // 유예 활용(§8 6): 시간순 마지막 몇 마리는 눈으로만 세고 지나간 뒤에 입력
+  T.forEach((x, j) => x.ai[p.i] = j >= skip ? 1 : 0); T.filter(x => x.ai[p.i]).sort((a, b) => b.t - a.t).slice(0, late).forEach(x => x.ai[p.i] = 0); D.forEach((x, j) => x.ai[p.i] = j < extra ? 1 : 0);
+  for (let j = D.length; j < extra; j++) p.queue.push({ t: rand(1, R.len - .5), d: 1 });
+}
+function aiSee(e) { // 개체가 화면 중앙(x=480)을 지나는 순간: 배정된 CPU는 반응 지연 뒤 누르고, 개체당 slip 확률로 실수(한 번 더). 어려움은 fix 확률로 다음 타깃을 건너뛰어(또는 B로) 만회
+  for (const p of P) { if (p.human || p.spec) continue; const L = CPU[p.lv];
+    if (e.ai[p.i]) { if (p.skipNext) p.skipNext = false; else p.queue.push({ t: R.st + Math.max(.06, gauss(...L.rd)), d: 1 }); }
+    if (Math.random() < L.slip) { p.queue.push({ t: R.st + rand(.15, .5), d: 1 }); if (Math.random() < L.fix) { if (ALLOW_UNDO) p.queue.push({ t: R.st + rand(.6, 1), d: -1 }); else p.skipNext = true; } } }
+}
+function count(p, d = 1) { // 카운트 +1(또는 B −1): 숫자 패널 펄스 + 플라밍고 깡총 + 플레이어별 주파수의 "탭" 소리 (§3)
+  if (p.spec) return; const n = clamp(p.count + d, 0, 99); if (n === p.count) return; p.count = n; p.pulse = .1;
+  if (d > 0) { p.jumpT = .18; sfx.beep(TAP_HZ[p.i], .04, 'square', p.human ? .06 : .03); } else sfx.beep(330, .05, 'square', .04);
+}
+function setPhase(ph) {
+  phase = ph; pt = 0;
+  if (ph === 'question') { ents = []; P.forEach(p => { p.count = 0; p.lateN = 0; p.locked = false; p.grade = -1; p.gain = 0; if (!p.human) aiPlan(p); }); R.popped = g.state() === 'play'; if (R.popped) sfx.pop(); }
+  else if (ph === 'go') sfx.go();
+  else if (ph === 'answer') P.forEach(p => { if (p.human || p.spec || !p.useGrace) return; let t = R.st + .3, n = p.lateN; if (p.skipNext && n > 0) { n--; p.skipNext = false; } for (let k = 0; k < n; k++, t += rand(.25, .45)) p.queue.push({ t, d: 1 }); }); // 실수는 그대로 남는다(§8 4)
+  else if (ph === 'reveal') { P.forEach(p => { p.locked = true; p.queue = []; p.from = p.score; }); sfx.tick(); for (let k = 0; k < 4; k++) setTimeout(() => sfx.beep(200, .06, 'square', .05), 100 + k * 90); } // 입력 마감 + 드럼롤
+}
+function judge() { // 정답 발표(§4·§7): 오차별 점수(만점/½/1⁄10/0), 포즈·팝업·효과음. 누적 점수는 draw에서 0.6s 카운트업
+  P.forEach(p => { if (p.spec) return; const d = Math.abs(p.count - R.answer); p.gain = d === 0 ? R.full : d === 1 ? R.full / 2 : d === 2 ? R.full / 10 : 0; if (R.isTB) p.tbScore += p.gain; else p.score += p.gain; p.grade = d === 0 ? 2 : d < 3 ? 1 : 0; if (!d) p.exact++; });
+  const low = Math.min(...P.map(p => p.score));
+  P.forEach(p => { if (p.spec) return; p.mood = p.grade === 2 ? 'jump' : p.grade === 1 ? 'idle' : p.score === low ? 'sleep' : 'dizzy'; p.moodT = p.grade === 2 ? 1 : 1.2;
+    pops.push({ x: PX[p.i] + 62, y: 432, s: p.gain ? `+${p.gain}` : '0', c: p.grade === 2 ? palette.gold : p.grade === 1 ? palette.green : '#BBB', life: 1.2 }); });
+  if (P.some(p => !p.spec && p.grade === 2)) sfx.good(); if (P.some(p => !p.spec && p.grade === 0)) setTimeout(sfx.bad, 150);
+  if (P.some(p => p.gain > 0)) for (let k = 0; k < 5; k++) setTimeout(sfx.count, 100 + k * 110);
+}
+function startRound(idx, isTB) { round = idx; R = genRound(idx, isTB); setPhase('question'); }
+function nextRound() {
+  if (round < 4) return startRound(round + 1, false);
+  const rk = p => p.score * 10 + p.tbScore, max = Math.max(...P.map(rk)), tied = P.filter(p => rk(p) === max);
+  if (TIEBREAK && tied.length > 1 && tb < 2) { tb++; P.forEach(p => p.spec = rk(p) !== max); return startRound(round + 1, true); } // 동점자만 채점, 나머지는 관전
+  P.forEach(p => { p.spec = false; p.mood = rk(p) === max ? 'jump' : 'idle'; p.moodT = 99; }); setPhase('end');
+}
+function drawEnt(ctx, e, t) { // 뒤뚱 오프셋 4px·주기 0.35s 공통(2차 보강 5). 구르는 종·공은 회전, 알은 흔들, 땅 파는 종은 흙더미에 반쯤 묻힘. 모두 왼쪽을 보며 이동
+  const wob = Math.sin(t * 17.95 + e.ph) * 4, k = e.kind;
+  ctx.fillStyle = 'rgba(0,0,0,.12)'; ctx.beginPath(); ctx.ellipse(e.x, e.y + 16, 16, 4, 0, 0, 7); ctx.fill();
+  if (k.obj) { ctx.save(); ctx.translate(e.x, e.y + 7); ctx.fillStyle = k.c; ctx.beginPath();
+    if (k.obj === 'ball') { ctx.rotate(e.rot); ctx.arc(0, 0, 9, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(9, 0); ctx.stroke(); ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, 7); ctx.fill(); }
+    else { ctx.rotate(Math.sin(t * 9 + e.ph) * .25); ctx.ellipse(0, 0, 6.5, 9, 0, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(-2, -3, 2, 0, 7); ctx.arc(2.5, 2, 1.6, 0, 7); ctx.fill(); }
+    ctx.restore(); return; }
+  drawFlamingo(ctx, e.x, e.y + (k.p === 'ball' ? 8 : wob), ES, k.p, t + e.ph, k.c, { flip: true, rot: k.p === 'ball' ? e.rot : 0 });
+  if (k.p === 'dig') { ctx.fillStyle = '#b8905a'; ctx.beginPath(); ctx.ellipse(e.x, e.y + 12, 18, 7, 0, 0, 7); ctx.fill(); }
+}
+function drawStage(ctx, t) { // 스튜디오 세트(2차 보강 7): 조명 트러스 + 흔들리는 스팟 3개 + 술렁이는 관객석 띠 + 언덕 통로(레인 3개) + 바닥. 카운터 나무판은 플레이어를 그린 뒤 앞에 덮는다
+  bg(ctx, W, 540, '#bfe6ff', palette.cream); rr(ctx, 0, 64, W, 8, 0, '#4a4a5a');
+  [240, 480, 720].forEach((x, k) => { const sw = Math.sin(t * .8 + k * 2) * 14; ctx.fillStyle = 'rgba(255,235,140,.16)'; ctx.beginPath(); ctx.moveTo(x, 96); ctx.lineTo(x - 160 + sw, 386); ctx.lineTo(x + 160 + sw, 386); ctx.fill();
+    rr(ctx, x - 14, 70, 28, 22, 4, '#4a4a5a'); ctx.fillStyle = palette.gold; ctx.beginPath(); ctx.arc(x, 96, 18, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(x - 5, 91, 6, 0, 7); ctx.fill(); });
+  ctx.fillStyle = 'rgba(107,107,138,.5)'; ctx.fillRect(0, 192, W, 26); for (let x = 8; x < W; x += 30) { ctx.beginPath(); ctx.arc(x + 7, 190 + Math.sin(t * 4 + x) * 2, 11, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#9ad17a'; ctx.fillRect(0, 218, W, 168); ctx.fillStyle = '#5f9a4e'; for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.ellipse(k * 190 + 40, 236, 130, 26, 0, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#c9a46a'; ctx.fillRect(0, 228, W, 158); ctx.fillStyle = 'rgba(0,0,0,.06)'; LANES.forEach(y => ctx.fillRect(0, y + 16, W, 2));
+  ctx.fillStyle = '#e6d3b3'; ctx.fillRect(0, 386, W, 154);
+}
+
+g = Game({ id: 'stampede', title: '플라밍고 세기', howto: ['무리 속에서 문제에 나온 플라밍고만 세세요', 'A 버튼: 한 마리 볼 때마다 한 번 · 지나간 뒤에도 잠깐 입력 가능', '5문제 합계로 승부 (10·10·20·20·40점) · 1~2 차이도 부분 점수'], duration: 0,
+  init() { // 항상 4명. 사람이면 입력, 아니면 CPU_LEVELS 난이도. 타이틀 뒤 장면용 demo 행렬은 g.time으로 흘러간다
+    P = slots().map((s, i) => ({ ...s, lv: CPU_LEVELS[i] || 'normal', count: 0, score: 0, tbScore: 0, lateN: 0, from: 0, gain: 0, exact: 0, grade: -1, locked: false, spec: false, jumpT: 0, pulse: 0, mood: 'idle', moodT: 0, last: -9, queue: [], target: 0, useGrace: false, skipNext: false }));
+    pops = []; elapsed = 0; tb = 0; demo = Array.from({ length: 10 }, (_, k) => ({ kind: SP[k % 6], lane: (k * 2) % 3, off: k * 107, ph: k }));
+    startRound(0, false);
+  },
+  update(dt) {
+    elapsed += dt; pt += dt; if (elapsed > SAFETY) g.finish(); // 안전장치 — 정상 종료는 5문제(+동점 결승) 뒤 'end' 단계에서
+    for (const p of P) { p.jumpT -= dt; p.pulse -= dt; p.moodT -= dt; }
+    for (const o of pops) o.life -= dt; pops = pops.filter(o => o.life > 0);
+    if (phase === 'stream' || phase === 'answer') {
+      R.st += dt;
+      if (phase === 'stream') while (R.sched.length && R.sched[0].t <= R.st) ents.push(R.sched.shift());
+      for (const e of ents) {
+        if (e.ut && e.dir < 0 && e.x <= e.ut.x) { e.ut.w -= dt; if (e.ut.w <= 0) { e.dir = 1; if (!e.mid) { e.mid = true; aiSee(e); } } } // U턴(플래그): 0.4s 멈췄다 오른쪽으로
+        else { e.x += e.dir * e.v * dt; e.rot += e.dir * e.v * dt / 9; }
+        if (!e.mid && e.x <= MID) { e.mid = true; aiSee(e); }
+      }
+      ents = ents.filter(e => e.x > -60 && e.x < 1080);
+      for (const p of P) {
+        if (p.human) { const k = g.p(p.i); if (k.hit('a') && g.time - p.last >= DEBOUNCE) { p.last = g.time; count(p); } if (ALLOW_UNDO && k.hit('b')) count(p, -1); }
+        else p.queue = p.queue.filter(o => { if (o.t > R.st) return true; count(p, o.d); return false; });
+      }
+      if (phase === 'stream' && !R.sched.length && !ents.length) setPhase('answer');
+      else if (phase === 'answer' && pt >= R.grace) setPhase('reveal');
+    }
+    if (phase === 'question' && !R.popped && g.state() === 'play') { R.popped = true; sfx.pop(); }
+    if (phase === 'question' && pt >= (round === 0 && !R.isTB ? 3 : 2.2)) setPhase('go');
+    else if (phase === 'go' && pt >= .8) setPhase('stream');
+    else if (phase === 'reveal') { if (!R.judged && pt >= .4) { R.judged = true; judge(); } if (pt >= 3) setPhase('gap'); }
+    else if (phase === 'gap' && pt >= .5) nextRound();
+    else if (phase === 'end' && pt >= 1) g.finish();
+  },
+  draw(ctx) {
+    const t = g.time, title = g.state() === 'title';
+    drawStage(ctx, t);
+    if (phase === 'go' && pt > .5) { ctx.fillStyle = 'rgba(201,164,106,.5)'; LANES.forEach((y, k) => { ctx.beginPath(); ctx.arc(945 + k * 14, y + 6 - Math.sin(t * 12 + k) * 4, 10 + k * 3, 0, 7); ctx.fill(); }); } // 첫 개체 직전 흙먼지(2차 보강 3)
+    const list = title ? demo.map(d => ({ ...d, x: 1010 - (d.off + t * 150) % 1070, y: LANES[d.lane], rot: -t * 150 / 9 })) : ents;
+    list.slice().sort((a, b) => a.y - b.y).forEach(e => drawEnt(ctx, e, t)); // 뒤 레인 먼저, 앞 레인이 가린다
+    // 플레이어 4명: 태그 · 누적 점수 · 숫자 패널(카운트 펄스 / 잠금 테두리 / 채점 색) · 플라밍고 — 상태 상시 표시. 나무 카운터는 그 위에 덮어 "앉아 있는" 느낌
+    if (g.state() !== 'end') P.forEach((p, i) => {
+      const x = PX[i], sc = p.pulse > 0 ? 1 + 2.5 * p.pulse : 1, shown = phase === 'reveal' ? Math.round(lerp(p.from, p.score, clamp((pt - .4) / .6, 0, 1))) : p.score;
+      drawPlayerTag(ctx, x, 402, i);
+      rr(ctx, x - 120, 429, 58, 22, 11, 'rgba(58,36,48,.85)'); text(ctx, `${shown}점`, x - 91, 445, 15, palette.gold);
+      ctx.save(); ctx.translate(x, 440); ctx.scale(sc, sc); rr(ctx, -45, -22, 90, 44, 8, p.grade === 2 ? palette.gold : p.grade === 1 ? '#CDF5C0' : p.grade === 0 ? '#CFCFCF' : p.spec ? '#EDE4DA' : palette.white);
+      if (p.locked) { ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(-45, -22, 90, 44, 8); ctx.stroke(); }
+      text(ctx, String(p.count), 0, 12, 32, p.spec ? '#9a8f85' : '#111'); ctx.restore();
+      const hop = p.moodT > 0 && p.mood === 'jump' ? Math.abs(Math.sin(t * 8)) * 14 : p.jumpT > 0 ? 10 : 0;
+      drawFlamingo(ctx, x, 492 - hop + (hop ? 6 : 0), .55, p.jumpT > 0 ? 'jump' : p.moodT > 0 ? p.mood : 'idle', t + i, p.color, { alpha: p.spec ? .55 : 1 });
+      if (p.human && phase === 'stream' && round === 0 && p.count === 0 && R.st < 6) text(ctx, 'A 버튼으로 세세요!', x, 384, 14, palette.pinkDark);
+    });
+    ctx.fillStyle = '#a8743d'; ctx.fillRect(0, 505, W, 35); ctx.fillStyle = '#7b5228'; ctx.fillRect(0, 505, W, 8); [260, 480, 700].forEach(x => ctx.fillRect(x - 3, 505, 6, 35));
+    if (title) return;
+    for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 2); otext(ctx, o.s, o.x, o.y - (1.2 - o.life) / 1.2 * 40, 26, o.c, palette.ink, 5); } ctx.globalAlpha = 1;
+    // 문제 팝업(위에서 슬라이드 인 0.25s) · 시작! · 답 입력 유예 바 · 정답 발표(드럼롤 0.4s 뒤 팝)
+    if (phase === 'question') {
+      const y = lerp(-120, 150, easeOut(Math.min(1, pt / .25))); rr(ctx, 120, y - 48, 720, 96, 16, palette.cream); ctx.strokeStyle = palette.pinkDark; ctx.lineWidth = 4; ctx.beginPath(); ctx.roundRect(120, y - 48, 720, 96, 16); ctx.stroke();
+      rr(ctx, 140, y - 18, 58, 36, 18, palette.pink); text(ctx, R.isTB ? '결승' : `Q${round + 1}`, 169, y + 8, 18, palette.white);
+      text(ctx, R.q, 470, y + 2, 24, palette.ink); text(ctx, R.say, 470, y + 32, 15, palette.pinkDark, 'center', 'normal');
+      R.targets.forEach((k, j) => drawFlamingo(ctx, 790 - j * 48, y + 6, .5, k.p, t + j, k.c, { flip: true }));
+      if (R.idx === 4 && !R.isTB) otext(ctx, '전부!', 800, y + 10, 26, palette.gold, palette.pinkDark, 4);
+    }
+    if (phase === 'go') otext(ctx, '시작!', 480, 170, 64, palette.gold, palette.pinkDark, 8);
+    if (phase === 'answer') { otext(ctx, '답을 정하세요!', 480, 148, 32, palette.white, palette.pinkDark, 6); rr(ctx, 280, 162, 400, 14, 7, 'rgba(58,36,48,.5)'); rr(ctx, 280, 162, Math.max(2, 400 * (1 - pt / R.grace)), 14, 7, palette.gold); }
+    if (phase === 'reveal') { if (pt < .4) otext(ctx, '정답은…', 480, 150, 40, palette.white, palette.pinkDark, 6); else { const s = 1 + .35 * Math.max(0, 1 - (pt - .4) / .15); ctx.save(); ctx.translate(480, 150); ctx.scale(s, s); otext(ctx, `정답: ${R.answer}마리!`, 0, 16, 48, palette.gold, palette.ink, 8); ctx.restore(); } }
+    // 상단 HUD 띠: 문제 번호 + 문제 문장(라운드 내내 상시) + 타깃 아이콘
+    rr(ctx, 0, 0, W, 60, 0, 'rgba(58,36,48,.82)'); text(ctx, R.isTB ? `결승 ${tb}` : `Q${round + 1} / 5`, 18, 39, 22, palette.cream, 'left');
+    ctx.font = 'bold 24px sans-serif'; const qw = ctx.measureText(R.q).width; text(ctx, R.q, 500, 39, 24, palette.white);
+    R.targets.forEach((k, j) => drawFlamingo(ctx, 500 + qw / 2 + 34 + j * 44, 30, ES, k.p, t + j, k.c, { flip: true }));
+  },
+  result() { const max = Math.max(...P.map(p => p.score)), w = P.find(p => p.score === max); return { scores: P.map(p => p.score * 10 + p.tbScore), text: `최고 ${max}점 / 정답 ${w.exact}문제` }; } });
+</script></body></html>

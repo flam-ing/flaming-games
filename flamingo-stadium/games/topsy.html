@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>빙글빙글 링아웃 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script><script>document.write('<link rel="stylesheet" href="../common/view3d.css">');</script></head>
+<body><div class="wrap"><canvas id="game" aria-label="빙글빙글 링아웃 경기 화면"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ←→↑↓ 이동(관성 있음) · A 버튼 회전 공격(3초 재충전)</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>document.write('<script src="../common/view3d.js"><\/script>');</script>
+<script>
+const stadiumView = STADIUM_3D.create('topsy', () => g);
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, text, rr, rand, clamp, lerp, shade, slots } = STADIUM;
+// 원작 Topsy-Turvy (specs/topsy.md §3, 단일 진실 소스): 링 중심 (480,300) R=200 · 몸 r=22 · 회전 히트 r=30 · 가속 900 · 최고속 230 · 마찰 450(가장자리 20px 구역은 200)
+// 회전 0.8s → 빈틈 0.25s(dizzy) → 재충전 3.0s. 회전 넉백 520(별도 감속 1600) · 회전끼리 400 · 일반 bump는 탄성 0.9 교환. 몸 중심이 링 밖이면 링아웃(스모식, 유예 없음)
+const CX = 480, CY = 300, R = 200, BR = 22, SR = 30, ACC = 900, VMAX = 230, FR = 450, FR_EDGE = 200, EDGE = 20;
+const SPIN_T = 0.8, GAP_T = 0.25, CHARGE_T = 3.0, KB = 520, KB2 = 400, KB_DECEL = 1600, FALL_T = 0.9, SPAWN_T = 0.6, INV_T = 1.0, WIN_KO = 5;
+const ANG = [225, 315, 135, 45].map(d => d * Math.PI / 180); // 배치 각도(화면 좌표, y 아래): 1P 좌상 · 2P 우상 · 3P 좌하 · 4P 우하
+// CPU 행동 모델 (§8): tick 의사결정 주기 · sig 스틱 오차 σ(도) · spinD 회전 발동 거리 · fail 발동 실수 확률 · evade 회피 확률 · safe 가장자리 복귀 반경 · spd 속도 배율 · idle 유휴 확률
+// §5·§8: 셸에 난이도 선택이 없으므로 모든 CPU는 CPU_LEVEL(기본 보통). miss = 가장자리 반사 실패 확률
+const CPU_LEVEL = 'normal';
+const AI = { easy: { tick: .6, sig: 35, spinD: 1e9, fail: .3, evade: 0, safe: 120, spd: .8, idle: .2, miss: .25, first: 2 }, normal: { tick: .35, sig: 18, spinD: 70, fail: .12, evade: .5, safe: 150, spd: .95, idle: .05, miss: .1, first: 2 },
+  hard: { tick: .2, sig: 8, spinD: 80, fail: .04, evade: 1, safe: 160, spd: 1, idle: 0, miss: .02, first: 2 }, veryhard: { tick: .12, sig: 3, spinD: 80, fail: .01, evade: 1, safe: 170, spd: 1, idle: 0, miss: .01, first: 2 } };
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(Math.PI * 2 * Math.random());
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y), fromC = p => Math.hypot(p.x - CX, p.y - CY);
+let g, P, parts, caption, over, elapsed, lastSec;
+
+function say(s) { caption = { s, life: 1.0 }; }
+function burst(x, y, n, c, sp, up = 0) { for (let k = 0; k < n; k++) { const a = rand(0, 7), v = rand(sp * .6, sp); parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - up, life: rand(.25, .4), c, g: up ? 900 : 0 }); } }
+function dust(p, n) { for (let k = 0; k < n; k++) parts.push({ x: p.x + rand(-16, 16), y: p.y + 30, vx: rand(-70, 70), vy: rand(-50, 0), life: rand(.25, .4), c: 'rgba(170,140,120,.7)', g: 0 }); }
+function big(ctx, s, x, y, size, fill, stroke = palette.pinkDark, lw = 6) { ctx.save(); ctx.font = `bold ${size}px sans-serif`; ctx.textAlign = 'center'; ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.strokeText(s, x, y); ctx.fillStyle = fill; ctx.fillText(s, x, y); ctx.restore(); }
+function startSpin(p) { p.spin = SPIN_T; p.charge = 0; p.ready = false; p.whir = 0; sfx.beep(520, .08, 'square', p.human ? .25 : .12); dust(p, 6); } // 준비 동작 0프레임 — 누른 즉시 판정 시작
+function hurt(v, by, t, mul) { v.hit = t; v.hitMul = mul; v.lastBy = by.i; v.lastT = 2; } // 피격: 포즈 t초 동안 입력 mul배, KO 귀속 2초
+function knock(s, v, mag, back) { // 회전자 s → 피격자 v 넉백. 방향 = 중심→중심 + s 이동벡터 0.5 가중. 무적이면 넉백 무효
+  let dx = v.x - s.x, dy = v.y - s.y, d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
+  const mx = s.vx + s.kx, my = s.vy + s.ky, ms = Math.hypot(mx, my); if (ms > 20) { dx += mx / ms * .5; dy += my / ms * .5; const n = Math.hypot(dx, dy); dx /= n; dy /= n; }
+  if (v.inv <= 0) { v.kx = dx * mag; v.ky = dy * mag; hurt(v, s, .35, .25); }
+  s.kx = -dx * back; s.ky = -dy * back; s.cd[v.i] = v.cd[s.i] = .3;
+}
+function collide(a, b) {
+  if (a.st !== 'play' || b.st !== 'play') return;
+  const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .01, as = a.spin > 0, bs = b.spin > 0, reach = (as ? SR : BR) + (bs ? SR : BR);
+  if (d >= reach) return;
+  const nx = dx / d, ny = dy / d;
+  if (as || bs) { // 회전 타격: 쌍별 0.3s 쿨다운(같은 프레임에 여러 명 동시 타격 가능)
+    const vic = as && bs ? (a.inv <= 0 || b.inv <= 0) : (as ? b : a).inv <= 0;
+    if (a.cd[b.i] <= 0 && vic) { // 쿨다운 중이거나 피격자 무적이면 타격 없이 아래 겹침 분리로
+      if (as && bs) { if (a.inv <= 0) { a.kx = -nx * KB2; a.ky = -ny * KB2; hurt(a, b, .35, .25); } if (b.inv <= 0) { b.kx = nx * KB2; b.ky = ny * KB2; hurt(b, a, .35, .25); } a.cd[b.i] = b.cd[a.i] = .3; }
+      else if (as) knock(a, b, KB, 120); else knock(b, a, KB, 120);
+      sfx.hit(); burst((a.x + b.x) / 2, (a.y + b.y) / 2, 8, palette.gold, 300); return;
+    }
+  }
+  const ov = (reach - d) / 2; a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov; // 겹침 분리
+  if (a.inv > 0 || b.inv > 0) return;
+  const an = a.vx * nx + a.vy * ny, bn = -(b.vx * nx + b.vy * ny), rel = an + bn; if (rel <= 0) return; // 서로 다가갈 때만 탄성(0.9) 교환 → 빨리 달려온 쪽이 민다
+  const j = rel * .95; a.vx -= j * nx; a.vy -= j * ny; b.vx += j * nx; b.vy += j * ny;
+  const [pu, pd] = an >= bn ? [a, b] : [b, a]; if (rel > 40) { pd.lastBy = pu.i; pd.lastT = 2; } // 스침(≤40)은 KO 귀속 없음
+  if (pd.hit < .2) { pd.hit = .2; pd.hitMul = .6; }
+  if (rel > 80) { if (pu.bumpT <= 0) { pu.bumpT = .15; sfx.tap(); burst((a.x + b.x) / 2, (a.y + b.y) / 2, 3, palette.gold, 220); } }
+}
+function move(p, ax, ay, dt) { // 관성 이동: 입력 중엔 가속만, 떼면 마찰. 넉백은 별도 벡터로 급감속
+  const spin = p.spin > 0, mul = (p.hit > 0 ? p.hitMul : 1) * (spin ? .6 : p.gap > 0 ? .5 : 1), vmax = VMAX * (spin ? .8 : 1) * p.spd, on = ax || ay;
+  const sp0 = Math.hypot(p.vx, p.vy); if (on) { p.vx += ax * ACC * mul * dt; p.vy += ay * ACC * mul * dt; }
+  const fr = fromC(p) > R - EDGE ? FR_EDGE : FR, sp = Math.hypot(p.vx, p.vy);
+  if (sp > 0) { const tg = on ? (sp > vmax ? Math.max(vmax, Math.min(sp, sp0 - fr * dt)) : sp) : Math.max(0, sp - fr * dt); p.vx *= tg / sp; p.vy *= tg / sp; } // 입력으로는 vmax를 못 넘음, 넉백·bump 초과분은 마찰로 감소
+  const ks = Math.hypot(p.kx, p.ky); if (ks > 0) { const tg = Math.max(0, ks - KB_DECEL * dt); p.kx *= tg / ks; p.ky *= tg / ks; }
+  p.x += (p.vx + p.kx) * dt; p.y += (p.vy + p.ky) * dt;
+  if (Math.abs(p.vx) > 20) p.flip = p.vx < 0;
+}
+function fall(p) { // 링아웃: 낙하 연출 0.9s, lastHitBy에게 KO(자멸이면 무점수), 당한 횟수 +1
+  p.st = 'fall'; p.t = 0; p.spin = 0; p.gap = 0; p.falls++; p.vx = clamp((p.vx + p.kx) * .3, -60, 60); p.vy = clamp((p.vy + p.ky) * .3, -40, 20); p.kx = p.ky = 0;
+  burst(p.x, p.y + 24, 12, palette.white, 260, 180); burst(p.x, p.y + 24, 6, palette.sky, 200, 150); sfx.bad();
+  const by = p.lastT > 0 && p.lastBy != null ? P[p.lastBy] : null;
+  if (by) { if (by.ko < WIN_KO) { by.ko++; by.tok.push(p.color); } by.tokT = .25; by.koNow++; by.koV = p.name; sfx.good(); } else say(`${p.name} 자멸!`);
+  p.lastBy = null; p.lastT = 0;
+}
+function respawn(p) { p.st = 'spawn'; p.t = 0; p.x = CX + Math.cos(ANG[p.i]) * 60; p.y = CY + Math.sin(ANG[p.i]) * 60; p.vx = p.vy = p.kx = p.ky = 0; p.hit = 0; }
+function aiThink(p) { // 의사결정 틱: 타깃 선정 → 회피/가장자리 복귀/추적 → 회전 판단. 결과(ax, ay, want)는 다음 틱까지 유지
+  const L = AI[p.lv]; p.tick = L.tick * rand(.85, 1.15); p.ax = p.ay = 0; p.want = false;
+  if (Math.random() < L.idle) return;
+  const lv = p.lv, hard = lv === 'hard' || lv === 'veryhard', dc = fromC(p), foes = P.filter(q => q !== p && q.st === 'play' && !(hard && q.inv > 0));
+  let tgt = null, best = -1e9;
+  for (const q of foes) { // 보통: 가까운 순(+정지 중 보너스) / 어려움: 가장자리 근접·재충전 중·거리 가중 점수
+    const d = dist(p, q), still = Math.hypot(q.vx, q.vy) < 20 ? .1 : 0, s = lv === 'veryhard' ? still + fromC(q) / R * .5 + (q.ready ? 0 : .3) - d / 400 * .2 + (q.human ? .1 : 0)
+      : lv === 'hard' ? fromC(q) / R : lv === 'easy' ? -d / 400 : still - d / 400 - (q.ready && fromC(q) < 80 ? .15 : 0);
+    if (s > best) { best = s; tgt = q; }
+  }
+  if (lv === 'easy' && foes.length && Math.random() < .4) tgt = foes[Math.floor(Math.random() * foes.length)];
+  let dx = 0, dy = 0; const th = foes.find(q => q.spin > 0 && dist(p, q) < 90);
+  if (th && Math.random() < L.evade) { const ex = p.x - th.x, ey = p.y - th.y, el = Math.hypot(ex, ey) || 1, cl = Math.max(1, dc); dx = ex / el + (CX - p.x) / cl; dy = ey / el + (CY - p.y) / cl; } // 회피: (나−상대)+(중심−나)
+  else if (dc > (hard && tgt && dist(p, tgt) < 60 ? 175 : L.safe)) { dx = CX - p.x; dy = CY - p.y; } // 가장자리 안전 복귀
+  else if (tgt) {
+    const lead = hard ? .2 : 0, d = dist(p, tgt); dx = tgt.x + tgt.vx * lead - p.x; dy = tgt.y + tgt.vy * lead - p.y;
+    if (p.ready && elapsed >= p.first && (lv === 'easy' || d < L.spinD) && (lv === 'easy' ? Math.random() < .25 : !hard || !tgt.ready || fromC(tgt) > R - 40) && Math.random() >= L.fail) p.want = true; // 어려움은 상대 재충전 중·가장자리일 때만
+  }
+  if (!dx && !dy) return;
+  const a = Math.atan2(dy, dx) + gauss(0, L.sig) * Math.PI / 180; p.ax = Math.cos(a) * L.spd; p.ay = Math.sin(a) * L.spd;
+}
+function hud(ctx, p, x, y) { // 모서리 HUD: 배지 + KO 토큰 5칸(피해자 색으로 채움) + 재충전 게이지 + 상태 + 당한 횟수
+  rr(ctx, x - 10, y - 20, 224, 58, 12, 'rgba(58,36,48,.85)');
+  drawPlayerTag(ctx, x + 34, y, p.i);
+  for (let k = 0; k < WIN_KO; k++) {
+    const c = p.tok[k], r = c && k === p.tok.length - 1 && p.tokT > 0 ? 9 * lerp(1, 1.6, p.tokT / .25) : 9;
+    ctx.beginPath(); ctx.arc(x + 88 + k * 22, y, r, 0, 7); if (c) { ctx.fillStyle = c; ctx.fill(); } else { ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2; ctx.stroke(); }
+  }
+  rr(ctx, x, y + 16, 110, 8, 4, 'rgba(0,0,0,.3)'); rr(ctx, x, y + 16, 110 * p.charge / CHARGE_T, 8, 4, p.ready ? p.color : shade(p.color, -40));
+  if (p.ready) { ctx.strokeStyle = p.flash > 0 && Math.floor(g.time * 20) % 2 ? palette.gold : 'rgba(255,255,255,.9)'; ctx.lineWidth = p.flash > 0 ? 3 : 1.5; ctx.beginPath(); ctx.roundRect(x - 1, y + 15, 112, 10, 5); ctx.stroke(); }
+  text(ctx, p.spin > 0 ? '회전!' : p.ready ? 'A 준비' : '재충전', x + 118, y + 25, 12, p.ready ? palette.gold : 'rgba(255,255,255,.85)', 'left', p.ready ? 'bold' : 'normal');
+  text(ctx, `당함 ×${p.falls}`, x + 164, y + 25, 12, 'rgba(255,255,255,.7)', 'left', 'normal');
+}
+
+
+function drawScorePanel(ctx, p, value, detail, progress) {
+  const x = 16 + p.i * 235;
+  rr(ctx, x, 51, 223, 67, 12, 'rgba(25,51,62,.92)');
+  rr(ctx, x, 51, 5, 67, 2, p.color);
+  drawPlayerTag(ctx, x + 48, 72, p.i);
+  text(ctx, value, x + 207, 81, 24, '#FFF6EA', 'right');
+  text(ctx, detail, x + 16, 104, 12, '#D2E8E3', 'left', 'normal');
+  if (progress != null) { rr(ctx, x + 118, 98, 87, 5, 2, '#526D77'); rr(ctx, x + 118, 98, Math.max(0, Math.min(1, progress)) * 87, 5, 2, p.color); }
+}
+function drawCaption3D(ctx, message) {
+  rr(ctx, 200, 490, 560, 32, 16, 'rgba(25,51,62,.88)');
+  text(ctx, message, 480, 511, 16, '#FFF6EA');
+}
+
+function drawStadium3D(ctx) {
+  if (!P || !stadiumView.draw(ctx, { time: g.time, players: P, ended: g.state() === 'end', over })) return false;
+  P.forEach(p => drawScorePanel(ctx, p, `${p.ko} / 5`, p.st === 'fall' ? '링아웃!' : p.spin > 0 ? '회전 공격!' : p.ready ? 'A · 공격 준비' : '재충전 중', p.charge / CHARGE_T));
+  stadiumView.labels(ctx, P);
+  if (over && g.state() !== 'end') { big(ctx, '5회 달성!', 480, 276, 64, palette.gold, palette.pinkDark, 8); big(ctx, `${P[over.w].name} 승리!`, 480, 322, 30, palette.white, palette.ink, 5); }
+  if (caption) drawCaption3D(ctx, caption.s);
+  else if (g.state() === 'play') drawCaption3D(ctx, '방향키로 이동  ·  A 회전 공격  ·  상대를 링 밖으로 밀어내세요!');
+  return true;
+}
+
+g = Game({ id: 'topsy', title: '빙글빙글 링아웃', howto: ['←→↑↓ 이동 (관성이 있어 미끄러져요)', 'A 버튼: 회전 공격 — 쓰면 3초 재충전', '상대를 링 밖으로 5번 떨어뜨리면 승리 (60초)'], duration: 60,
+  init() {
+    // 항상 4마리. 시작 배치 = 중심 110px 원 위 슬롯 각도, 서로 마주봄. 사람이면 입력, 아니면 CPU(전원 CPU_LEVEL)
+    P = slots().map((s, i) => ({ ...s, x: CX + Math.cos(ANG[i]) * 110, y: CY + Math.sin(ANG[i]) * 110, vx: 0, vy: 0, kx: 0, ky: 0, st: 'play', t: 0, rot: 0, flip: i % 2 === 1,
+      spin: 0, gap: 0, charge: CHARGE_T, ready: true, whir: 0, hit: 0, hitMul: 1, inv: 0, lastBy: null, lastT: 0, ko: 0, falls: 0, tok: [], tokT: 0, koNow: 0, koV: '', flash: 0, bumpT: 0, cd: [0, 0, 0, 0],
+      lv: CPU_LEVEL, rf: 0, tick: 0, ax: 0, ay: 0, want: false, spd: 1, first: 0 }));
+    P.forEach(p => { if (!p.human) { p.spd = AI[p.lv].spd; p.tick = AI[p.lv].idle ? rand(.3, .8) : rand(.1, .5); p.first = AI[p.lv].first; } }); // 어려움 이상은 1초 안에 첫 돌진, 첫 회전은 2s 뒤부터(1-10b)
+    parts = []; caption = null; over = null; elapsed = 0; lastSec = 61;
+  },
+  update(dt) {
+    elapsed += dt; if (elapsed > 63) g.finish(); // 안전장치 (셸 타이머가 60초에 끝냄)
+    if (caption) { caption.life -= dt; if (caption.life <= 0) caption = null; }
+    for (const q of parts) { q.vy += q.g * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0);
+    if (over) { over.t -= dt; for (const p of P) { p.tokT -= dt; p.flash -= dt; p.inv -= dt; if (p.st === 'fall') { p.t += dt; p.rot += 10 * dt; p.x += p.vx * dt; p.y += p.vy * dt + 50 * dt; } else if (p.st === 'spawn') p.t = Math.min(SPAWN_T, p.t + dt); } if (over.t <= 0) g.finish(); return; } // 5KO: 1.5s 정지 연출 후 종료
+    const sec = Math.ceil(g.timeLeft); if (sec !== lastSec) { lastSec = sec; if (sec <= 10 && sec > 0) sfx.tick(); }
+    for (const p of P) {
+      p.cd = p.cd.map(v => Math.max(0, v - dt)); p.hit -= dt; p.inv -= dt; p.lastT -= dt; p.tokT -= dt; p.flash -= dt; p.bumpT -= dt;
+      // 회전 상태기계: 회전 0.8s(rot +18rad/s, 윙윙 소리) → 빈틈 0.25s → 재충전 3.0s → 가득 차면 pop + 게이지 점멸
+      if (p.spin > 0) { p.spin -= dt; p.rot += 18 * dt; p.whir -= dt; if (p.whir <= 0) { p.whir = .15; sfx.beep(380 + rand(0, 120), .04, 'triangle', p.human ? .12 : .06); } if (p.spin <= 0) p.gap = GAP_T; }
+      else if (p.gap > 0) p.gap -= dt;
+      else if (!p.ready) { p.charge += dt; if (p.charge >= CHARGE_T) { p.charge = CHARGE_T; p.ready = true; p.flash = .3; sfx.pop(); } }
+      if (p.st === 'fall') { p.t += dt; p.rot += 10 * dt; p.x += p.vx * dt; p.y += p.vy * dt + 50 * dt; if (p.t >= FALL_T) respawn(p); continue; }
+      if (p.st === 'spawn') { p.t += dt; if (p.t >= SPAWN_T) { p.st = 'play'; p.inv = INV_T; } continue; } // 착지 후 1.0s 무적(깜빡임)
+      let ax = 0, ay = 0, want = false;
+      if (p.human) { const k = g.p(p.i), a = k.axis(), l = Math.hypot(a.x, a.y) || 1; ax = a.x / l; ay = a.y / l; want = k.hit('a'); } // 대각선 정규화, A는 누른 프레임만(버퍼 없음)
+      else { // CPU: 틱마다 의사결정. 가장자리 반사 — 0.4s 뒤 예상 위치가 안전 반경+20 밖이면 중심으로 조향(관성으로 스스로 떨어지지 않게)
+        p.tick -= dt; if (p.tick <= 0) aiThink(p); want = p.want; p.want = false;
+        p.rf -= dt; if (p.rf <= 0) { const L = AI[p.lv]; p.rf = L.tick / 2; const px = p.x + (p.vx + p.kx) * .4 - CX, py = p.y + (p.vy + p.ky) * .4 - CY; // 반사도 반응 지연(틱/2)마다, 레벨별 실패 확률
+          if (Math.hypot(px, py) > L.safe + 20 && Math.random() >= L.miss) { const cl = Math.max(1, fromC(p)); p.ax = (CX - p.x) / cl * p.spd; p.ay = (CY - p.y) / cl * p.spd; p.tick = Math.max(p.tick, L.tick / 2); } }
+        ax = p.ax; ay = p.ay;
+      }
+      if (want && p.ready) startSpin(p);
+      move(p, ax, ay, dt);
+    }
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) collide(P[i], P[j]);
+    for (const p of P) if (p.st === 'play' && fromC(p) > R) fall(p);
+    for (const p of P) if (p.koNow) { // 같은 프레임 다중 KO는 한 줄로
+      say(p.koNow > 1 ? `${p.name} ${p.koNow}연속 링아웃!` : `${p.name} → ${p.koV} 링아웃!`); p.koNow = 0;
+      if (p.ko >= WIN_KO && !over) { over = { w: p.i, t: 1.5 }; sfx.beep(1046, .3, 'sine', .08); }
+    }
+  },
+  draw(ctx) {
+    if (drawStadium3D(ctx)) return;
+    const W = g.W, H = g.H, t = g.time;
+    // 배경: 새벽 호수 (§6) — 하늘 그라디언트 + 물 + 물결 + 연잎 장식
+    let gr = ctx.createLinearGradient(0, 0, 0, 96); gr.addColorStop(0, '#ffd6e0'); gr.addColorStop(1, '#ffb3c7'); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, 96);
+    ctx.fillStyle = '#fff1c2'; ctx.beginPath(); ctx.arc(640, 50, 24, 0, 7); ctx.fill();
+    gr = ctx.createLinearGradient(0, 96, 0, H); gr.addColorStop(0, '#4aa3d8'); gr.addColorStop(1, '#2f7fb8'); ctx.fillStyle = gr; ctx.fillRect(0, 96, W, H - 96);
+    ctx.fillStyle = 'rgba(255,255,255,.2)'; for (let i = 0; i < 16; i++) { ctx.beginPath(); ctx.ellipse((i * 131 + Math.sin(t * 1.3 + i) * 16 + W) % W, 120 + (i * 67) % 400, 30, 3, 0, 0, 7); ctx.fill(); }
+    ctx.fillStyle = '#6cc27a'; [[120, 200], [200, 380], [780, 170], [850, 430], [60, 330]].forEach(([x, y]) => { ctx.beginPath(); ctx.ellipse(x, y, 30, 18, 0, .4, 6); ctx.lineTo(x, y); ctx.fill(); });
+    // 링: 물 그림자 → 옆면(두께 26) → 상판(연분홍 대리석) → 미끄럼 구역(R−20~R 밝게) → 동심원 60·130 → 흰 테두리 4px
+    ctx.fillStyle = 'rgba(10,40,90,.28)'; ctx.beginPath(); ctx.arc(CX + 8, CY + 38, R, 0, 7); ctx.fill();
+    ctx.fillStyle = '#d98fa6'; ctx.beginPath(); ctx.arc(CX, CY + 26, R, 0, 7); ctx.rect(CX - R, CY, 2 * R, 26); ctx.fill();
+    ctx.fillStyle = '#ffe9ef'; ctx.beginPath(); ctx.arc(CX, CY, R, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff5f8'; ctx.lineWidth = EDGE; ctx.beginPath(); ctx.arc(CX, CY, R - EDGE / 2, 0, 7); ctx.stroke();
+    ctx.strokeStyle = 'rgba(217,143,166,.35)'; ctx.lineWidth = 2; [60, 130].forEach(r => { ctx.beginPath(); ctx.arc(CX, CY, r, 0, 7); ctx.stroke(); });
+    ctx.strokeStyle = palette.white; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(CX, CY, R, 0, 7); ctx.stroke();
+    if (!P) return;
+    const ended = g.state() === 'end', maxKo = Math.max(...P.map(p => p.ko));
+    for (const p of [...P].sort((a, b) => a.y - b.y)) { // painter's sort: 아래쪽이 나중에
+      // 포즈 (§1·§7): 대기 idle(팽이처럼 ±0.08rad 흔들림) · 이동 run · 회전 ball(rot 누적) · 피격 hit · 빈틈 dizzy · 낙하 dizzy(축소·투명) · 재등장 fly · 결과 승자 jump / 패자 sleep
+      let pose = 'idle', rot = Math.sin(t * Math.PI * 2 / 1.2 + p.i) * .08, sc = 1.1, al = 1, y = p.y;
+      const win = over ? p.i === over.w : p.ko === maxKo && maxKo > 0;
+      if ((over || ended) && p.st === 'play') { pose = win ? 'jump' : over ? 'sleep' : 'idle'; if (win) { y -= Math.abs(Math.sin(t * 5)) * 30; rot = 0; } }
+      else if (p.st === 'fall') { const k = p.t / FALL_T; pose = 'dizzy'; rot = p.rot; sc = lerp(1.1, .44, k); al = Math.max(0, 1 - k); }
+      else if (p.st === 'spawn') { pose = 'fly'; rot = 0; y -= 90 * (1 - p.t / SPAWN_T); }
+      else if (p.spin > 0) { pose = 'ball'; rot = p.rot; sc = 1.2; }
+      else if (p.hit > 0) { pose = 'hit'; rot = 0; }
+      else if (p.gap > 0) { pose = 'dizzy'; rot = 0; }
+      else if (Math.hypot(p.vx, p.vy) > 30) { pose = 'run'; rot = 0; }
+      if (p.inv > 0 && Math.floor(t * 10) % 2) al *= .4;
+      if (p.st !== 'fall') { ctx.fillStyle = 'rgba(60,20,40,.18)'; ctx.beginPath(); ctx.ellipse(p.x, p.y + 32, 22, 7, 0, 0, 7); ctx.fill(); }
+      if (pose === 'idle') { ctx.strokeStyle = 'rgba(120,80,100,.15)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(p.x, p.y + 30, 26 + Math.sin(t * 5) * 2, 8, 0, 0, 7); ctx.stroke(); } // 항상 도는 팽이의 먼지 링
+      drawFlamingo(ctx, p.x, y, sc, pose, t + p.i, p.color, { rot, flip: p.flip, alpha: al });
+      if (p.spin > 0) { ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 3; for (let k = 0; k < 3; k++) { const a0 = -12 * t + k * 2.1; ctx.beginPath(); ctx.arc(p.x, p.y, 34 + k * 6, a0, a0 + 1.7); ctx.stroke(); } } // Rapid Spin 회오리
+      if (p.st !== 'fall') { const my = y - 64; ctx.fillStyle = p.color; ctx.beginPath(); ctx.moveTo(p.x - 7, my - 9); ctx.lineTo(p.x + 7, my - 9); ctx.lineTo(p.x, my); ctx.closePath(); ctx.fill(); big(ctx, p.name, p.x, my - 13, 11, p.color, palette.white, 3); }
+    }
+    for (const q of parts) { ctx.globalAlpha = clamp(q.life * 3, 0, 1); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, 3.5, 0, 7); ctx.fill(); } ctx.globalAlpha = 1;
+    hud(ctx, P[0], 20, 62); hud(ctx, P[1], 726, 62); hud(ctx, P[2], 20, 468); hud(ctx, P[3], 726, 468);
+    if (g.timeLeft <= 10 && !over && !ended) big(ctx, Math.max(0, g.timeLeft).toFixed(1), CX, 60, 40, palette.red, palette.ink, 5); // 평소엔 셸 타이머만, 마지막 10초만 같은 표기(toFixed(1))로 강조
+    if (!caption && !over && !ended && g.state() === 'play' && elapsed < 4 && P.some(p => p.human)) { rr(ctx, CX - 190, 74, 380, 32, 16, 'rgba(58,36,48,.6)'); text(ctx, 'A 버튼: 회전 공격! (3초 재충전)', CX, 96, 18, palette.cream); } // 튜토리얼 힌트는 캡션 띠에 한 번
+    if (caption) { ctx.globalAlpha = clamp(caption.life * 3, 0, 1); rr(ctx, CX - 190, 74, 380, 32, 16, 'rgba(58,36,48,.8)'); text(ctx, caption.s, CX, 96, 18, palette.cream); ctx.globalAlpha = 1; }
+    if (over && !ended) { big(ctx, '5회 달성!', CX, CY - 10, 64, palette.gold, palette.pinkDark, 8); big(ctx, `${P[over.w].name} 승리!`, CX, CY + 40, 30, palette.white, palette.ink, 5); }
+  },
+  result() { // 동점은 같은 점수를 그대로 넘겨 셸이 공동 순위로 처리 (원작 퀴즈 결착은 미구현)
+    const max = Math.max(...P.map(p => p.ko)), w = P.filter(p => p.ko === max).map(p => p.name).join('·');
+    return { scores: P.map(p => p.ko), text: over ? `${P[over.w].name} 5회 링아웃 달성!` : (max === 0 ? '시간 종료! 링아웃 없음' : `시간 종료! ${w} ${max}회 링아웃`) };
+  } });
+</script></body></html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>밍고 발전소 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: 전극이 튀어나온 쪽으로 ←→↑↓ 를 누른 채 · 파랑이면 A 버튼 연타 · 초록이면 B 버튼 연타</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, text, rr, rand, clamp, slots } = STADIUM;
+// 원작 Pichu's Power Plant (specs/pichu.md): 사분면마다 플라밍고 1마리, 사방 전극 4개 중 하나가 튀어올라 파랑/초록 점등.
+// 그 방향을 누른 채(홀드) 파랑=A / 초록=B 연타 → 파워 미터 충전. 먼저 100% = 승리, 패자는 감전. 타이머 없음(선착 레이스).
+// ---- 튜닝 상수 (§2~§8) ----
+const W = 960, H = 540, FULL = 100, CAP = 0.066, HOLDS = [1, 1.5, 2], GAP = 0.2, POP = 0.15, FIRST_AT = 0.3, SAFETY = 60;
+const GAIN = { human: 1.6, cpu: 1.6 }; // 정답 1회 충전량(%). 오색은 2회분 감소. 스펙 기본 1.25는 Normal 중앙값 26초라 CPU 1.6으로 상향, 사람도 CPU와 동일 1.6 (QA: 전원 Normal 상대 9회/초 ≈32%·10회/초 ≈70%)
+const TIERS = { normal: { d: [.30, .50], c: [.08, .18], rate: [9, 10], pErr: .25, errK: 2, pWrong: .12 }, hard: { d: [.18, .30], c: [.04, .10], rate: [9.5, 10.5], pErr: .12, errK: 1, pWrong: .06 } }, MIX = ['normal', 'normal', 'normal'];
+// d = 방향 인지 지연, c = 색 인지 지연(초), rate = 연타(회/초, 전작 계측대로 난이도 무관 ≈10 — 난이도 차이는 지연에서 남 §2차-6), pErr/errK = 색 인지 직후 오색 확률·횟수, pWrong = 옛 방향에 0.3~0.6초 더 연타할 확률
+// 60fps 시뮬 중앙값: Normal ≈ 15s · Hard ≈ 10.5s. 기본 구성은 §5대로 전원 Normal (specs/pichu.md 구현 메모 참조)
+const LAMP = { blue: '#3A7BFF', green: '#3FD35A' }, YEL = '#FFD23F', OFF = '#3a3f4a', GRAY = '#A9AFBD';
+const CX = [259, 701, 259, 701], CY = [184, 184, 440, 440], MX = [104, 856, 104, 856], EX = 96, EYU = 78, EYU2 = 64, EYD = 74, FY = -32, S = 1.2; // 사분면 중심(1P 좌상·2P 우상·3P 좌하·4P 우하) · 파워 미터 x · 전극 거리(위/아랫줄 위/아래 — 아랫줄 위 전극 전구가 경계 y312 아래에 머물게) · 플라밍고·발판 y 오프셋 · 스케일
+const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0], ARROW = ['↑', '→', '↓', '←']; // 방향 0 상 · 1 우 · 2 하 · 3 좌
+const GX = W / 2, GY = 60; // 상단 발전기 전구
+let g, P, elapsed, phase, endT, full, sparks, popups, msg;
+
+function setup() {
+  elapsed = 0; phase = 'wait'; endT = 0; full = true; sparks = []; popups = []; msg = { s: '전극 방향을 보고! 파랑은 A, 초록은 B!', t: 2.5 };
+  const mix = MIX.slice(); for (let i = mix.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [mix[i], mix[j]] = [mix[j], mix[i]]; } // CPU 3명: 어려움 1 + 보통 2 를 무작위 슬롯에
+  P = slots().map((s, i) => {
+    const p = { ...s, cx: CX[i], cy: CY[i], mx: MX[i], charge: 0, dir: -1, col: 'blue', lit: false, hold: 0, gap: 0, h: [22, 22, 22, 22], eyo: [i < 2 ? -EYU : -EYU2, 0, EYD, 0], lastHit: -1, facing: -1, flip: i % 2 === 1,
+      mash: 0, dizzy: 0, red: 0, jumpT: 0, wire: 0, last: -1, milestone: 0, errs: 0, airs: 0, win: false, seen: null, faceAt: 1e9, colorAt: 1e9, colorDone: true, err: 0, cd: 0 };
+    if (!s.human) { const t = TIERS[mix.pop()]; Object.assign(p, { dDelay: rand(...t.d), cDelay: rand(...t.c), rate: rand(...t.rate), pErr: t.pErr, errK: t.errK, pWrong: t.pWrong }); }
+    return p;
+  });
+}
+function newElec(p, gap = GAP) { // 직전과 다른 방향 균등 랜덤, 색은 독립 50/50 (§5). 공백(하강 0.1 + pop 0.15) 중엔 입력 무효·무페널티
+  let d; do d = Math.random() * 4 | 0; while (d === p.dir);
+  p.dir = d; p.col = Math.random() < 0.5 ? 'blue' : 'green'; p.lit = false; p.gap = gap; p.airs = 0; p.errs = 0; p.faceAt = p.colorAt = 1e9; p.colorDone = true;
+}
+function light(p) { // 점등: 유지 {1, 1.5, 2}초. CPU는 방향 인지 → 색 인지 두 단계 지연 시각을 잡고, 그 전까지 옛 방향·옛 색으로 계속 누른다 (§8)
+  p.lit = true; p.hold = HOLDS[rand(0, 3) | 0]; if (p.human) sfx.tick();
+  else { p.faceAt = elapsed + p.dDelay * rand(0.7, 1.3) + (Math.random() < p.pWrong ? rand(0.3, 0.6) : 0); p.colorAt = p.faceAt + p.cDelay * rand(0.7, 1.3); p.colorDone = false; }
+}
+function face(p, d) { p.facing = d; if (d === 1) p.flip = false; else if (d === 3) p.flip = true; } // 좌우는 flip, 상하는 마지막 좌우를 유지한 채 고개만 기울임
+const tilt = p => { const r = p.facing === 0 ? -0.25 : p.facing === 2 ? 0.25 : 0; return p.flip ? -r : r; };
+function beak(p) { const r = tilt(p), x = (p.flip ? -36 : 36) * S, y = -30 * S; return [p.cx + x * Math.cos(r) - y * Math.sin(r), p.cy + FY + x * Math.sin(r) + y * Math.cos(r)]; } // drawFlamingo 변환(translate→rotate→scale→flip)을 따라간 부리 끝
+function say(s, t = 1.5) { msg = { s, t }; }
+function spark(x, y, c, n, d, sp, fall) { for (let k = 0; k < n; k++) sparks.push({ x, y, vx: DX[d] * sp + rand(-70, 70), vy: DY[d] * sp + rand(-70, 70) + (fall ? 60 : 0), life: rand(0.25, 0.5), c, gr: fall ? 700 : 0 }); }
+function press(p, btn) { // 유효 충전 = 방향 일치 AND 색 일치 (§3). 방향이 틀리면 허공에 회색 스파크만(무음·무페널티), 방향이 맞는데 색이 틀리면 방전 (§2차-9)
+  if (phase !== 'race' || !p.lit || elapsed - p.last < CAP) return; // 공백 중 무효 · 연타 상한 15회/초
+  p.last = elapsed; p.mash = 0.25; const [bx, by] = beak(p), gain = GAIN[p.human ? 'human' : 'cpu'];
+  if (p.facing !== p.dir) { spark(bx, by, GRAY, 2, p.facing < 0 ? (p.flip ? 3 : 1) : p.facing, 140); if (p.human && ++p.airs === 4) say('방향을 먼저!'); return; }
+  if ((btn === 'a') === (p.col === 'blue')) {
+    p.charge = Math.min(FULL, p.charge + gain); spark(bx, by, LAMP[p.col], 5, p.dir, 260); p.wire = 0.15; if (p.human) sfx.tap();
+    const m = Math.floor(p.charge / 25); if (m > p.milestone && p.charge < FULL) { p.milestone = m; p.jumpT = 0.35; if (p.human) sfx.pop(); } // 25/50/75% 통과 시 작은 점프
+  } else {
+    p.charge = Math.max(0, p.charge - 2 * gain); p.dizzy = 0.3; p.red = 0.2; spark(p.cx, p.cy + FY - 10, GRAY, 5, 2, 90, true);
+    popups.push({ s: '찌릿!', x: p.cx + (p.flip ? 48 : -48), y: p.cy + FY - 48, life: 0.5 }); if (p.human) { sfx.bad(); if (++p.errs === 3) say('색을 잘 봐!'); }
+  }
+}
+function endGame(ws, isFull) { // 100% 도달 프레임에 전원 입력 정지. 같은 프레임 동점자는 전원 승 (§4)
+  phase = 'end'; endT = 0; full = isFull; popups = []; msg.t = 0; ws.forEach(p => { p.win = true; if (isFull) p.charge = FULL; });
+  if (ws.length) sfx.good(); // 무승부면 무음. 승패 징글은 셸이 finish 때 재생 (중복 방지)
+}
+
+// ---- 그리기 헬퍼 ----
+function outlined(ctx, s, x, y, size, fill, stroke = palette.white) { ctx.save(); ctx.font = `bold ${size}px sans-serif`; ctx.textAlign = 'center'; ctx.lineJoin = 'round'; ctx.lineWidth = size / 6; ctx.strokeStyle = stroke; ctx.strokeText(s, x, y); ctx.fillStyle = fill; ctx.fillText(s, x, y); ctx.restore(); }
+function zap(ctx, x, y, s, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x + 4 * s, y - 14 * s); ctx.lineTo(x - 6 * s, y + 2 * s); ctx.lineTo(x + s, y + 2 * s); ctx.lineTo(x - 4 * s, y + 14 * s); ctx.lineTo(x + 6 * s, y - 2 * s); ctx.lineTo(x - s, y - 2 * s); ctx.closePath(); ctx.fill(); }
+function bolt(ctx, x0, y0, x1, y1, w, c, j = 22) { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x0, y0); for (let k = 1; k < 7; k++) { const t = k / 7; ctx.lineTo(x0 + (x1 - x0) * t + rand(-j, j), y0 + (y1 - y0) * t + rand(-j / 3, j / 3)); } ctx.lineTo(x1, y1); ctx.stroke(); }
+function tri(ctx, x, y, d, s, c) { const nx = -DY[d], ny = DX[d]; ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x + DX[d] * s, y + DY[d] * s); ctx.lineTo(x + nx * s * .7 - DX[d] * s * .5, y + ny * s * .7 - DY[d] * s * .5); ctx.lineTo(x - nx * s * .7 - DX[d] * s * .5, y - ny * s * .7 - DY[d] * s * .5); ctx.closePath(); ctx.fill(); }
+function stripes(ctx, x, y, w, h, s) { // 검정 바탕 + 노랑 사선 경고띠
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.fillStyle = '#151515'; ctx.fillRect(x, y, w, h); ctx.fillStyle = YEL;
+  for (let k = -h; k < w + h; k += s * 2) { ctx.beginPath(); ctx.moveTo(x + k, y); ctx.lineTo(x + k + s, y); ctx.lineTo(x + k + s - h, y + h); ctx.lineTo(x + k - h, y + h); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+}
+function electrode(ctx, x, y, h, c, letter) { // 3/4 뷰 원기둥 단자: 바닥 소켓 → 기둥(활성 시 22→48px 튀어오름) → 전구(점등 시 램프색 글로우 + 눌러야 할 버튼 글자, §6)
+  ctx.fillStyle = '#1b2238'; ctx.beginPath(); ctx.ellipse(x, y, 21, 8, 0, 0, 7); ctx.fill();
+  rr(ctx, x - 17, y - h, 34, h, 5, '#6f7a8c'); rr(ctx, x - 14, y - h + 3, 6, h - 6, 3, '#8a95a8'); ctx.fillStyle = '#9aa5b8'; ctx.beginPath(); ctx.ellipse(x, y - h, 17, 6, 0, 0, 7); ctx.fill();
+  const by = y - h - 10;
+  if (c) { const gl = ctx.createRadialGradient(x, by, 6, x, by, 36); gl.addColorStop(0, c + 'AA'); gl.addColorStop(1, c + '00'); ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, by, 36, 0, 7); ctx.fill(); }
+  ctx.fillStyle = c || OFF; ctx.beginPath(); ctx.arc(x, by, 11, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(x - 4, by - 4, 3, 0, 7); ctx.fill();
+  if (letter) text(ctx, letter, x, by + 7, 20, palette.white);
+}
+function generator(ctx, top, end) { // 상단 중앙 발전기: 경고띠 받침 + 원통 몸통 + 창(선두 충전량에 비례해 노랗게) + 전구(종료 시 만개, §6)
+  stripes(ctx, GX - 86, 150, 172, 14, 12); rr(ctx, GX - 70, 78, 140, 76, 12, '#4a5568'); rr(ctx, GX - 70, 78, 18, 76, 12, '#5b677d');
+  ctx.fillStyle = '#7b879c'; ctx.beginPath(); ctx.ellipse(GX, 78, 70, 13, 0, 0, 7); ctx.fill();
+  rr(ctx, GX - 46, 100, 92, 40, 6, '#141a2e'); rr(ctx, GX - 46, 100, 92, 40, 6, `rgba(255,210,63,${end ? 0.95 : top / FULL * 0.85})`);
+  ctx.strokeStyle = '#2c3550'; ctx.lineWidth = 2; [GX - 15, GX + 15].forEach(x => { ctx.beginPath(); ctx.moveTo(x, 100); ctx.lineTo(x, 140); ctx.stroke(); });
+  const glow = end ? 1 : 0.25 + top / FULL * 0.6 + (top >= 75 ? Math.sin(g.time * 10) * 0.1 : 0); // 마지막 25%는 두근거리며 깜빡
+  rr(ctx, GX - 9, GY + 10, 18, 12, 3, '#8a95a8'); ctx.fillStyle = `rgba(255,209,102,${glow * 0.45})`; ctx.beginPath(); ctx.arc(GX, GY, 30, 0, 7); ctx.fill();
+  ctx.fillStyle = palette.gold; ctx.beginPath(); ctx.arc(GX, GY, 12, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.arc(GX - 4, GY - 4, 4, 0, 7); ctx.fill();
+}
+
+g = Game({ id: 'pichu', title: '밍고 발전소', duration: 0,
+  howto: ['튀어나온 전극 쪽으로 ←→↑↓ 를 눌러 바라보고', '파랑이면 A 버튼, 초록이면 B 버튼을 연타해 충전!', '틀린 색은 전기가 새요 · 먼저 100%면 승리, 진 쪽은 감전'],
+  init() { setup(); },
+  update(dt) {
+    elapsed += dt;
+    if (phase === 'wait' && elapsed >= FIRST_AT) { phase = 'race'; P.forEach(p => newElec(p, POP)); sfx.pop(); } // GO 0.3초 뒤 첫 전극 pop (§7)
+    if (phase === 'race') {
+      P.forEach((p, i) => {
+        if (!p.lit) { p.gap -= dt; if (p.gap <= 0) light(p); } else { p.hold -= dt; if (p.hold <= 0) newElec(p); }
+        if (p.human) { // 방향은 홀드(axis)로 읽고 새로 누른 키가 우선, 마지막 방향 유지. A·B 동시는 오답 처리 (§3)
+          const k = g.p(i), ax = k.axis(); let d = -1;
+          ['up', 'right', 'down', 'left'].forEach((a, j) => { if (k.hit(a)) p.lastHit = j; });
+          if (p.lastHit >= 0 && k.down(['up', 'right', 'down', 'left'][p.lastHit])) d = p.lastHit; // 마지막으로 누른 키가 눌려 있는 한 그 방향 유지
+          else if (Math.abs(ax.x) >= 0.5 || Math.abs(ax.y) >= 0.5) d = Math.abs(ax.x) >= Math.abs(ax.y) ? (ax.x > 0 ? 1 : 3) : (ax.y > 0 ? 2 : 0);
+          if (d >= 0) face(p, d);
+          const a = k.hit('a'), b = k.hit('b'); if (a && b) press(p, p.col === 'blue' ? 'b' : 'a'); else if (a || b) press(p, a ? 'a' : 'b');
+        } else { // CPU: 지연 동안 옛 방향·옛 색으로 계속 연타 → 허공 연타와 방전이 자연 발생. 연타 상한에 걸린 프레임은 타이머를 소모하지 않아 평균 속도 유지
+          if (elapsed >= p.faceAt && p.facing !== p.dir) face(p, p.dir);
+          if (elapsed >= p.colorAt && !p.colorDone) { p.colorDone = true; p.seen = p.col; if (Math.random() < p.pErr) p.err = 1 + (Math.random() * p.errK | 0); }
+          if (p.seen) { p.cd -= dt; if (p.cd <= 0 && elapsed - p.last >= CAP) { let c = p.seen; if (p.err > 0 && p.facing === p.dir) { p.err--; c = c === 'blue' ? 'green' : 'blue'; } press(p, c === 'blue' ? 'a' : 'b'); p.cd += rand(0.85, 1.15) / p.rate; } }
+        }
+      });
+      const ws = P.filter(p => p.charge >= FULL);
+      if (ws.length) endGame(ws, true);
+      else if (elapsed > SAFETY) { const top = Math.max(...P.map(p => p.charge)); endGame(top > 0 ? P.filter(p => p.charge === top) : [], false); } // 안전장치: 최다 충전자 승 (아무도 못 채웠으면 무승부)
+    } else if (phase === 'end') { // 승자 번개 0.5초 → 0.3초 뒤 패자 감전 → 배너 → finish
+      const was = endT; endT += dt; if (was < 0.3 && endT >= 0.3 && P.some(p => p.win)) { sfx.hit(); sfx.beep(90, 0.6, 'sawtooth', 0.05); } if (endT >= 2.2) g.finish();
+    }
+    if (elapsed > SAFETY + 8) g.finish(); // 절대 안전장치
+    P.forEach(p => {
+      ['mash', 'dizzy', 'red', 'jumpT', 'wire'].forEach(k => p[k] = Math.max(0, p[k] - dt));
+      for (let d = 0; d < 4; d++) { const up = phase === 'end' || (d === p.dir && (p.lit || p.gap <= POP)); p.h[d] = clamp(p.h[d] + (up ? 175 : -260) * dt, 22, 48); } // pop 0.15s ↑ · 하강 0.1s ↓
+    });
+    sparks.forEach(s => { s.life -= dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += s.gr * dt; }); sparks = sparks.filter(s => s.life > 0);
+    popups.forEach(o => { o.life -= dt; o.y -= 40 * dt; }); popups = popups.filter(o => o.life > 0);
+    if (msg.t > 0) msg.t -= dt;
+  },
+  draw(ctx) {
+    const t = g.time, end = phase === 'end', shock = end && P && P.some(p => p.win) && endT >= 0.3 && endT < 2.0, top = P ? Math.max(...P.map(p => p.charge)) : 0;
+    // 발전소 실내: 남색 그라데이션 + 금속 바닥 타일(사분면 십자 경계) + 양옆 파이프 (§6)
+    const gr = ctx.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#151c33'); gr.addColorStop(1, '#26304f'); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+    rr(ctx, 30, 48, W - 60, H - 60, 18, '#2a3352'); ctx.save(); ctx.beginPath(); ctx.roundRect(30, 48, W - 60, H - 60, 18); ctx.clip(); ctx.strokeStyle = '#343e60'; ctx.lineWidth = 1.5;
+    for (let x = 30; x <= W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); } for (let y = 48; y <= H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    ctx.strokeStyle = '#3d4870'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(GX, 164); ctx.lineTo(GX, H); ctx.moveTo(30, 312); ctx.lineTo(W - 30, 312); ctx.stroke(); ctx.restore();
+    [12, W - 22].forEach(x => { rr(ctx, x, 40, 10, H - 40, 5, '#1e2742'); [140, 300, 460].forEach(y => rr(ctx, x - 4, y, 18, 12, 4, '#2b3552')); });
+    if (!P) return;
+    generator(ctx, top, end);
+    P.forEach((p, i) => {
+      const litC = end ? palette.gold : LAMP[p.col], on = d => end || (d === p.dir && p.lit);
+      ctx.fillStyle = p.color + '1A'; ctx.beginPath(); ctx.ellipse(p.cx, i < 2 ? p.cy : p.cy - 8, 150, i < 2 ? 104 : 122, 0, 0, 7); ctx.fill(); ctx.strokeStyle = p.color + '66'; ctx.lineWidth = 2; ctx.stroke(); // 사분면 소유 표시
+      // 원형 금속 발판(3/4 뷰) + 바라보는 방향 표식 + 활성 전극의 바닥 반사광
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(p.cx + 4, p.cy + FY + 40, 52, 18, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#4a5568'; ctx.beginPath(); ctx.ellipse(p.cx, p.cy + FY + 36, 48, 17, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#5b677d'; ctx.beginPath(); ctx.ellipse(p.cx, p.cy + FY + 34, 38, 11, 0, 0, 7); ctx.fill();
+      if (p.facing >= 0 && !end) tri(ctx, p.cx + DX[p.facing] * 44, p.cy + FY + 36 + DY[p.facing] * 14, p.facing, 8, p.color);
+      if (p.lit && !end) { const ex = p.cx + DX[p.dir] * EX, ey = p.cy + p.eyo[p.dir], gl = ctx.createRadialGradient(ex, ey, 4, ex, ey, 70); gl.addColorStop(0, litC + '55'); gl.addColorStop(1, litC + '00'); ctx.fillStyle = gl; ctx.beginPath(); ctx.ellipse(ex, ey, 70, 34, 0, 0, 7); ctx.fill(); }
+      // 전극 위·좌·우 → 전기선 → 플라밍고 → 아래 전극 순서로 겹침. 종료 시 전부 노랗게 점등 (§7)
+      const el = d => electrode(ctx, p.cx + DX[d] * EX, p.cy + p.eyo[d], p.h[d], on(d) ? litC : null, on(d) && !end ? (p.col === 'blue' ? 'A' : 'B') : '');
+      el(0); el(1); el(3);
+      if (p.lit && !end) { const d = p.dir; ctx.globalAlpha = ((t * 16) | 0) % 2 ? 1 : 0.6; bolt(ctx, p.cx + DX[d] * EX, p.cy + p.eyo[d] - p.h[d] - 10, p.cx, p.cy + FY - 6, p.wire > 0 ? 4 : 2, LAMP[p.col], 6); ctx.globalAlpha = 1; }
+      // 플라밍고 (§1): 대기 idle · 방향 flip/rot · 정답 연타 run+진동 · 오색 dizzy · 마일스톤 jump · 승자 fly→jump+번개 · 패자 hit→dizzy 흑백 8Hz 깜빡임
+      let pose = 'idle', dy = 0, col = p.color, shake = 0, rot = 0;
+      if (end) {
+        if (p.win) { pose = endT < 0.5 ? 'fly' : 'jump'; dy = endT < 0.5 ? -endT * 40 : -20 - Math.abs(Math.sin(t * 6)) * 22; }
+        else if (shock) { pose = endT < 0.9 ? 'hit' : 'dizzy'; col = ((t * 16) | 0) % 2 ? '#151515' : '#E6E6E6'; shake = endT < 0.9 ? 4 : 1; }
+        else if (endT >= 2.0) { pose = 'dizzy'; dy = 6; }
+      } else {
+        rot = tilt(p); if (p.jumpT > 0) dy = -Math.sin(Math.PI * (1 - p.jumpT / 0.35)) * 22;
+        if (p.dizzy > 0) pose = 'dizzy'; else if (p.jumpT > 0) pose = 'jump'; else if (p.mash > 0) { pose = 'run'; shake = 3; }
+      }
+      const sx = shake ? rand(-shake, shake) : 0, sy = shake ? rand(-shake, shake) : 0;
+      drawFlamingo(ctx, p.cx + sx, p.cy + FY + dy + sy, S, pose, t + i, col, { flip: p.flip, rot });
+      if (end && p.win) zap(ctx, p.cx + (p.flip ? 60 : -60), p.cy + FY + dy - 70 + Math.sin(t * 5) * 4, 1.5, palette.gold);
+      if (p.human && !end && p.lit && p.facing !== p.dir && elapsed < 8) text(ctx, `전극 쪽으로 ${ARROW[p.dir]}`, p.cx + (p.flip ? -78 : 78), p.cy + FY - 40, 14, palette.cream); // 첫 8초 사람 힌트: 방향이 틀리면 알려줌
+      el(2);
+      // 파워 미터(세로 18×120, 노랑 채움, 테두리 플레이어 색, 오색 시 붉게) + 배지 + % — 사분면 바깥쪽 (§6)
+      rr(ctx, p.mx - 3, p.cy - 63, 24, 126, 6, p.color); rr(ctx, p.mx, p.cy - 60, 18, 120, 4, '#1b2238');
+      const fh = 120 * p.charge / FULL; if (fh > 0) rr(ctx, p.mx, p.cy + 60 - fh, 18, fh, 4, p.red > 0 ? palette.red : YEL);
+      [25, 50, 75].forEach(m => { ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(p.mx, p.cy + 60 - 1.2 * m - 1, 18, 2); });
+      drawPlayerTag(ctx, p.mx + 9, p.cy - 80, i); text(ctx, `${Math.round(p.charge)}%`, p.mx + 9, p.cy + 82, 15, p.red > 0 ? palette.red : palette.cream);
+    });
+    if (end) { // 승자 발판 → 발전기 굵은 번개 0.5초, 패자에게는 감전 번개 + 화면 플래시 (§7)
+      if (endT < 0.5) P.forEach(p => { if (p.win) { bolt(ctx, GX, GY, p.cx, p.cy + FY - 20, 12, YEL); bolt(ctx, GX, GY, p.cx, p.cy + FY - 20, 4, palette.white); } });
+      if (shock) { P.forEach(p => { if (!p.win && ((t * 16) | 0) % 2) bolt(ctx, GX, GY, p.cx, p.cy + FY - 30, 4, YEL); }); ctx.fillStyle = `rgba(255,255,255,${0.06 + Math.random() * 0.1})`; ctx.fillRect(0, 0, W, H); }
+    }
+    sparks.forEach(s => { ctx.globalAlpha = clamp(s.life * 2.5, 0, 1); ctx.fillStyle = s.c; ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, 7); ctx.fill(); }); ctx.globalAlpha = 1;
+    popups.forEach(o => { ctx.globalAlpha = clamp(o.life * 2, 0, 1); outlined(ctx, o.s, o.x, o.y, 24, palette.red); }); ctx.globalAlpha = 1;
+    // 상단 안내 띠: 조작 요약, 아나운서 대사가 있으면 그것을 (§6~7)
+    rr(ctx, 0, 0, W, 40, 0, 'rgba(8,12,28,.75)'); text(ctx, '먼저 100% 채우면 승리!', 16, 26, 15, '#c8d0e6', 'left');
+    if (msg.t > 0) { ctx.globalAlpha = clamp(msg.t * 2, 0, 1); outlined(ctx, msg.s, GX, 29, 22, palette.gold, palette.ink); ctx.globalAlpha = 1; }
+    else { text(ctx, '전극 쪽으로 ←→↑↓', GX - 135, 27, 17, palette.cream, 'right'); text(ctx, '파랑 = A 버튼', GX - 40, 27, 17, LAMP.blue); text(ctx, '초록 = B 버튼', GX + 85, 27, 17, LAMP.green); }
+    if (end && endT >= 0.6 && g.state() === 'play') { // 종료 배너: 화면 중앙, 글자 폭만큼만
+      const wn = P.filter(p => p.win).map(p => p.name).join('·'), s = wn ? `⚡ ${wn} ${full ? '만충전' : '최다 충전'}!` : '무승부 · 아무도 충전하지 못했어요'; ctx.font = 'bold 38px sans-serif'; const bw = ctx.measureText(s).width + 64;
+      rr(ctx, GX - bw / 2, 236, bw, 70, 18, 'rgba(58,36,48,.85)'); outlined(ctx, s, GX, 285, 38, palette.gold, palette.ink);
+    }
+  },
+  result() { const names = P.filter(p => p.win).map(p => p.name).join('·'); return { scores: P.map(p => Math.round(p.charge)), text: names ? `⚡ ${names} ${full ? '만충전' : '최다 충전'}!` : '무승부 · 아무도 충전하지 못했어요' }; } });
+</script></body></html>

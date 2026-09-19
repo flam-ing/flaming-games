@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>플라밍고 배리어볼 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ←→ (3P·4P는 ↑↓) 로 배리어 이동 · 공이 닿는 순간 A 버튼 = 스매시</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, text, rr, rand, clamp, slots } = STADIUM;
+// 원작 Barrier Ball (specs/barrier.md): 마임맨 4인 퐁 → 플라밍고 4마리. 60초 · 5점 선착 · 남의 변에 넣으면 마지막 타자 +1 · 내 변에 들어오면 −1(0 클램프)
+// §12-13 불명 항목은 전부 여기 상수. 코트는 스펙 420→400px, 중심 y 290→276: 상·하 변 플라밍고와 점수 박스가 캔버스(540) 안에 들어오게
+const S = 400, L = 280, R = 680, T = 76, B = 476, CX = 480, CY = 276, LIMIT = 60, WIN = 5;
+const BAR = 48, TH = 12, BC = 20, RAD = 9, REACH = BC + TH / 2 + RAD, MOVE = 300, CAP = 620, MAXA = 40 * Math.PI / 180, MAX_BALLS = 3, WALL = 30;
+const SIDES = [ // 1P 하 · 2P 상 · 3P 좌 · 4P 우 (§6 추정). ax = 이동축, line = 변 좌표, (nx,ny) = 코트 안쪽 법선, t0 = 이동축 시작
+  { ax: 'x', line: B, nx: 0, ny: -1, t0: L }, { ax: 'x', line: T, nx: 0, ny: 1, t0: L }, { ax: 'y', line: L, nx: 1, ny: 0, t0: T }, { ax: 'y', line: R, nx: -1, ny: 0, t0: T }];
+const HUDP = [[130, 490], [830, 46], [130, 276], [830, 276]], ARROW = ['▼', '▲', '◀', '▶']; // 의도적 편차: 스펙 §6 1P(480,528)·2P(480,30)는 540px 캔버스에서 플라밍고와 겹쳐 좌하·우상 코너로. 배리어 inset 14→20, 플라밍고 1.3→1.15·오프셋 24→18도 같은 이유
+// CPU (§8): d = 반응 지연[평균, σ]s, s = 조준 오차 σ px, fold = 벽 반사 예측, sm = 스매시 확률, m = 실수 확률/s, aim = 빈 변 조준
+const AI = { normal: { d: [.32, .08], s: 30, fold: false, sm: .2, m: .08, aim: false }, hard: { d: [.28, .06], s: 22, fold: true, sm: .25, m: .05, aim: false } }; // §8 표(Hard 180ms·12px·0.65)보다 크게 완화 — QA 시뮬(유휴 1P)에서 5점 조기 종료가 과반이라 60초 경기가 더 흔하도록(§4)
+const LV = ['normal', 'normal', 'hard', 'normal']; // 슬롯 2·3·4 = Normal / Hard / Normal (§11-11)
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(Math.PI * 2 * Math.random());
+let g, P, balls, parts, pops, elapsed, clock, started, nextSpawn, goals, pulse, phase, endT, endMsg, endCol, seq;
+
+const tan = (p, o) => p.ax === 'x' ? o.x : o.y, vt = (p, o) => p.ax === 'x' ? o.vx : o.vy; // 이동축 좌표·속도
+const dist = (p, o) => p.ax === 'x' ? (o.y - p.line) * p.ny : (o.x - p.line) * p.nx; // 변에서 코트 안쪽으로 잰 거리
+const rate = (p, o) => -(o.vx * p.nx + o.vy * p.ny); // 변으로 다가오는 속도 (양수면 접근)
+const pt = (p, t, d) => p.ax === 'x' ? { x: t, y: p.line + p.ny * d } : { x: p.line + p.nx * d, y: t };
+function setD(p, b, d) { if (p.ax === 'x') b.y = p.line + p.ny * d; else b.x = p.line + p.nx * d; }
+function pop(x, y, s, c) { pops.push({ x, y, s, c, life: 0.8 }); }
+function spark(x, y, n, c) { for (let k = 0; k < n; k++) { const a = rand(0, 7), v = rand(60, 220); parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(0.25, 0.5), c }); } }
+function launch() { // 중앙 발사 장치: 무작위 각도(각 축 ±12° 제외), 초속은 총 골 수·경과 시간으로 가속 (§5·§12-9). 스펙 추정치(420·25/골·2/s)는 시뮬에서 10초 만에 상한에 닿아 흰 공 실점이 운으로 쏟아져 완화
+  const a = (Math.floor(rand(0, 4)) * 90 + rand(12, 78)) * Math.PI / 180, v = Math.min(380, 220 + 12 * goals + 1.5 * elapsed); // 스펙 §12-9: min(420, 220+25·goals+2·t)
+  balls.push({ id: seq++, x: CX, y: CY, vx: Math.cos(a) * v, vy: Math.sin(a) * v, last: -1, age: 0, hb: -1, ht: 9, n: 0, smash: 0, hist: [] }); pulse = 0.2; sfx.pop();
+}
+function fx(dt) { pulse -= dt; for (const o of pops) { o.y -= 40 * dt; o.life -= dt; } pops = pops.filter(o => o.life > 0); for (const q of parts) { q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0); }
+function smash(p) { if (p.cool > 0 || p.dizzy > 0) return; p.win = 0.12; p.cool = 0.25; p.push = 0.18; } // 판정 창 0.12s · 쿨다운 0.25s · 밀기 연출 (§3)
+function hitBarrier(b, p) { // 한 방향 충돌(§12-3): 변을 향해 오는 공만. 옆면은 접선 반전, 정면은 맞은 위치로 ±40°, 스매시면 ×1.5 + 이동 커브 35%
+  if (rate(p, b) <= 0 || (b.hb === p.i && b.ht < 0.1)) return;
+  const d = dist(p, b), off = tan(p, b) - p.pos; if (d > REACH || d < BC - TH / 2 || Math.abs(off) > BAR + RAD) return;
+  b.hb = p.i; b.ht = 0; b.last = p.i; b.n++; const tx = p.ax === 'x' ? 1 : 0, ty = 1 - tx;
+  if (Math.abs(off) > BAR) { const sg = Math.sign(off), m = Math.max(80, Math.abs(vt(p, b))); if (tx) { b.vx = sg * m; b.x = p.pos + sg * (BAR + RAD + 1); } else { b.vy = sg * m; b.y = p.pos + sg * (BAR + RAD + 1); } p.flash = 0.08; p.big = false; sfx.tap(); return; }
+  const sm = p.win > 0, s = Math.min(CAP, Math.hypot(b.vx, b.vy) * (sm ? 1.5 : 1.06)), th = clamp(off / BAR, -1, 1) * MAXA;
+  let vx = (p.nx * Math.cos(th) + tx * Math.sin(th)) * s, vy = (p.ny * Math.cos(th) + ty * Math.sin(th)) * s;
+  if (sm) { vx += tx * p.vel * 0.35; vy += ty * p.vel * 0.35; const m = Math.hypot(vx, vy); if (m > CAP) { vx *= CAP / m; vy *= CAP / m; } p.hitT = 0.25; p.flash = 0.12; p.big = true; b.smash = 0.25; spark(b.x, b.y, 6, palette.white); sfx.hit(); }
+  else { p.flash = 0.08; p.big = false; sfx.tap(); }
+  b.vx = vx; b.vy = vy; setD(p, b, REACH + 1);
+}
+function edges(b) { // 변을 넘으면 골. 양 끝 30px(모서리)·발사 0.5s 안은 벽 반사 + 축 성분 18% 하한으로 정체 방지 (§12-4·6)
+  for (const p of P) { const d = dist(p, b); if (d >= 0) continue; const t = tan(p, b) - p.t0;
+    if (t < WALL || t > S - WALL || b.age < 0.5) { if (p.ax === 'x') b.vy = -b.vy; else b.vx = -b.vx; setD(p, b, 1); b.n++; const s = Math.hypot(b.vx, b.vy);
+      if (Math.abs(b.vx) < 0.18 * s) b.vx = (Math.sign(b.vx) || 1) * 0.18 * s; if (Math.abs(b.vy) < 0.18 * s) b.vy = (Math.sign(b.vy) || 1) * 0.18 * s;
+      const m = Math.hypot(b.vx, b.vy); b.vx *= s / m; b.vy *= s / m; sfx.beep(520, 0.03, 'sine', 0.03); }
+    else { goal(b, p); b.dead = true; return; } }
+}
+function goal(b, p) { if (phase !== 'play') return; // 마지막 타자가 남이면 +1 (jump·+1 팝업·골 띠 깜빡), 내 변은 −1 (dizzy·−1 팝업, 0점이면 감산·팝업 없음). 흰 공·자책골은 −1만 (§4·§7)
+  goals++; const q = b.last >= 0 && b.last !== p.i ? P[b.last] : null, t = clamp(tan(p, b), p.t0 + 40, p.t0 + S - 40);
+  spark(b.x, b.y, 10, q ? q.color : palette.red);
+  if (q) { q.score = Math.min(WIN, q.score + 1); q.jumpT = 0.6; p.gflash = 0.4; p.gcol = q.color; const o = pt(p, t - 18, 48); pop(o.x, o.y, '+1', q.color); sfx.good(); }
+  if (p.score > 0) { p.score--; const o = pt(p, t + (q ? 18 : 0), 48); pop(o.x, o.y, '−1', palette.red); }
+  p.dizzy = 0.8; sfx.bad();
+  if (q && q.score >= WIN) endGame(`${q.name} 승리!`, q.color, 1.2);
+}
+function endGame(msg, col, t) { if (phase !== 'play') return; phase = 'end'; endT = t; endMsg = msg; endCol = col; }
+const seen = (p, b) => b.hist.find(h => elapsed - h.t >= p.delay) || b.hist[b.hist.length - 1] || b; // 반응 지연: delay초 전 공 상태 (§12-8)
+function predict(p, h, eta, fold) { // 배리어 면 도착 시 이동축 좌표. fold = 코트 폭으로 접어 되돌리는 벽 반사 예측 (§12-7)
+  let t = tan(p, h) + vt(p, h) * eta;
+  if (fold && (t < p.t0 + WALL || t > p.t0 + S - WALL)) { let r = t - p.t0; const w = 2 * S; r = ((r % w) + w) % w; if (r > S) r = w - r; t = p.t0 + r; }
+  return clamp(t, p.t0, p.t0 + S);
+}
+function aimOff(p, tg) { // 빈 변 조준(§8 Hard): 수비수가 가장 멀리 떨어진 변 끝으로 반사되도록 배리어 접촉 위치를 비켜 선다
+  const h = pt(p, tg, REACH); let best = 0, bd = -1;
+  for (const q of P) if (q !== p) { const far = q.pos < q.t0 + S / 2 ? q.t0 + S - 50 : q.t0 + 50, o = pt(q, far, 0), dx = o.x - h.x, dy = o.y - h.y;
+    const ang = Math.atan2(p.ax === 'x' ? dx : dy, dx * p.nx + dy * p.ny); if (Math.abs(ang) > MAXA) continue;
+    const d = Math.abs(far - q.pos); if (d > bd) { bd = d; best = ang; } }
+  return -best / MAXA * BAR;
+}
+function ai(p, dt) { // §8: 다가오는 공 중 도착 최단을 목표. 지연된 상태로 예측 + 조준 오차(0.4s 이내 절반), 실수, 도달 0.10s 전 스매시
+  const A = AI[p.lv];
+  const inc = balls.map(b => { const h = seen(p, b), r = rate(p, h); if (r <= 0) return null; const eta = Math.max(0, dist(p, h) - REACH) / r, ut = tan(p, h) + vt(p, h) * eta; // 다른 변(남의 골)으로 나갈 공은 제외
+    return ut >= p.t0 - WALL && ut <= p.t0 + S + WALL ? { b, h, eta } : null; }).filter(Boolean).sort((u, v) => u.eta - v.eta);
+  const f = inc[0];
+  if (!f) { p.tb = null; p.aimT = p.t0 + S / 2; p.k = 0.5; } // 오는 공이 없으면 변 중앙으로 천천히 복귀
+  else {
+    const key = f.b.id + ':' + f.h.n; // 새 공이거나 (지연된 시야에서) 방향이 바뀌면 오차·지연을 새로 뽑고 스매시 여부 결정
+    if (key !== p.key) { p.key = key; p.err = gauss(0, A.s); p.delay = Math.max(0.03, gauss(A.d[0], A.d[1])); if (f.b !== p.tb) { p.tb = f.b; p.plan = Math.random() < A.sm; p.fired = false; } }
+    const now = rate(p, f.b) > 0 ? Math.max(0, dist(p, f.b) - REACH) / rate(p, f.b) : 9; // 실제 도달 시간: 막판 보정·스매시 타이밍
+    let t = predict(p, f.h, f.eta, A.fold) + p.err * (now < 0.4 ? 0.5 : 1);
+    if (A.fold && inc[1] && f.eta > 0.4) t = t * 0.7 + predict(p, inc[1].h, inc[1].eta, true) * 0.3; // Hard: 둘째 공도 고려해 중간에서 대기
+    if (A.aim && p.plan && now < 0.5) t += aimOff(p, t);
+    p.aimT = t; p.k = 1;
+    if (p.plan && !p.fired && now < 0.10 && Math.abs(tan(p, f.b) - p.pos) < BAR + RAD) { p.fired = true; smash(p); }
+  }
+  if (Math.random() < A.m * dt) p.mis = 0.3;
+}
+function drawBall(ctx, b) { // 흰 공 + 분홍 띠(플라밍고 알) + 마지막 타자 색 링(흰 링 = 아직 아무도 안 침). 스매시 직후 잔상 3개 (§1·§7)
+  const col = b.last >= 0 ? P[b.last].color : palette.white;
+  if (b.smash > 0) [3, 7, 11].forEach((k, j) => { const h = b.hist[k]; if (!h) return; ctx.globalAlpha = (0.35 - j * 0.12) * b.smash / 0.25; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(h.x, h.y, RAD, 0, 7); ctx.fill(); });
+  ctx.globalAlpha = 1; const sc = 0.4 + 0.6 * Math.min(1, b.age / 0.15); ctx.save(); ctx.translate(b.x, b.y); ctx.scale(sc, sc);
+  ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 14, 0, 7); ctx.stroke();
+  ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(0, 0, RAD, 0, 7); ctx.fill();
+  ctx.rotate(b.age * 6); ctx.beginPath(); ctx.arc(0, 0, RAD, 0, 7); ctx.clip(); ctx.fillStyle = palette.pink; ctx.fillRect(-RAD, -3, RAD * 2, 6); ctx.fillStyle = palette.ink; ctx.beginPath(); ctx.arc(0, 0, 2, 0, 7); ctx.fill(); ctx.restore();
+}
+
+g = Game({ id: 'barrier', title: '플라밍고 배리어볼', howto: ['←→ 로 배리어를 움직여 공을 막아요 (3P·4P는 ↑↓)', '공이 닿는 순간 A 버튼 = 스매시! 움직이며 치면 커브', '남의 골 +1 · 내 골 −1 · 먼저 5점 또는 60초 뒤 최다 득점 승리'], duration: 0,
+  init() { // 항상 4마리: 1P 하 · 2P 상 · 3P 좌 · 4P 우. 사람이면 입력, 아니면 CPU. 재시작마다 전부 리셋 (§12-1)
+    P = slots().map((s, i) => ({ ...s, ...SIDES[i], pos: SIDES[i].t0 + S / 2, vel: 0, mv: 0, score: 0, lv: LV[i], win: 0, cool: 0, push: 0, hitT: 0, jumpT: 0, dizzy: 0, flash: 0, big: false, gflash: 0, gcol: '', mis: 0,
+      delay: AI[LV[i]].d[0], err: 0, key: '', aimT: SIDES[i].t0 + S / 2, tb: null, plan: false, fired: false, k: 1 }));
+    balls = []; parts = []; pops = []; elapsed = 0; clock = 0; started = false; nextSpawn = 8; goals = 0; pulse = 0; phase = 'play'; endT = 0; endMsg = ''; endCol = ''; seq = 0;
+  },
+  update(dt) {
+    clock += dt; if (clock > LIMIT + 8) return g.finish(); // 안전장치: 무슨 일이 있어도 끝난다
+    if (phase === 'end') { fx(dt); endT -= dt; if (endT <= 0) g.finish(); return; } // 승리/끝 연출 동안 공·입력 정지
+    if (!started) { started = true; launch(); } // GO 시점 = 60초 시작 + 첫 공 (§7)
+    const rem0 = LIMIT - elapsed; elapsed += dt; const rem = LIMIT - elapsed;
+    if (rem <= 10 && rem > 0 && Math.ceil(rem) < Math.ceil(rem0)) sfx.tick();
+    // 추가 발사(§12-9 스펙: 둘째 공 5s, clamp(9−0.12t,4,9)±1.5s, 최대 4개) → 8s, clamp(11−0.1t,6,11)±1.5s, 최대 3개: 조기 종료 억제
+    if (elapsed >= nextSpawn) { if (balls.length < MAX_BALLS) { launch(); nextSpawn = elapsed + clamp(11 - 0.1 * elapsed, 6, 11) + rand(-1.5, 1.5); } else nextSpawn = elapsed + 2; }
+    for (const p of P) {
+      if (p.human) { const k = g.p(p.i), ax = k.axis(); p.mv = p.ax === 'x' ? ax.x : (ax.y || ax.x); if (k.hit('a') || k.hit('b')) smash(p); } else ai(p, dt); // 3P·4P: ←→도 ↑↓로 받음 (§12-10)
+      const spd = MOVE * (p.dizzy > 0 ? 0.5 : 1); let step; // 실점 경직 0.8s 동안 속도 50% (§3)
+      if (p.human) step = p.mv * spd * dt; else if (p.mis > 0) step = -Math.sign(p.aimT - p.pos || 1) * spd * dt; else step = clamp(p.aimT - p.pos, -spd * p.k * dt, spd * p.k * dt);
+      const np = clamp(p.pos + step, p.t0 + BAR, p.t0 + S - BAR); p.vel = (np - p.pos) / dt; p.pos = np;
+      for (const key of ['win', 'cool', 'push', 'hitT', 'jumpT', 'dizzy', 'flash', 'gflash', 'mis']) p[key] -= dt;
+    }
+    const n = Math.ceil(dt * 120), h = dt / n; // 서브스텝: 620px/s 공이 12px 배리어를 뚫지 않게
+    for (let k = 0; k < n && phase === 'play'; k++) for (const b of balls) { if (b.dead) continue; b.x += b.vx * h; b.y += b.vy * h; b.age += h; b.ht += h; for (const p of P) hitBarrier(b, p); edges(b); }
+    for (const b of balls) { b.smash -= dt; b.hist.unshift({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, n: b.n, t: elapsed }); if (b.hist.length > 40) b.hist.pop(); }
+    balls = balls.filter(b => !b.dead);
+    // 코트에 0개면 0.3s 뒤 즉시(§12-9). (이전의 "30초부터 최소 2개" 추가 규칙은 조기 종료를 늘려 제거)
+    if (balls.length < 1) nextSpawn = Math.min(nextSpawn, elapsed + 0.3);
+    fx(dt);
+    if (elapsed >= LIMIT) endGame('끝!', palette.cream, 1.0);
+  },
+  draw(ctx) {
+    ctx.fillStyle = '#2e3a4f'; ctx.fillRect(0, 0, g.W, g.H); // 어두운 관중석 + 점 조명 (§6)
+    for (let i = 0; i < 70; i++) { const x = (i * 137 + 40) % g.W, y = (i * 83 + 20) % g.H; if (x > L - 40 && x < R + 40 && y > T - 40 && y < B + 40) continue; ctx.fillStyle = `rgba(255,255,255,${0.06 + 0.05 * Math.sin(g.time * 2 + i)})`; ctx.beginPath(); ctx.arc(x, y, 2 + i % 3, 0, 7); ctx.fill(); }
+    if (!P) return;
+    // 코트: 민트 바닥 + 타일, 대각선 4진영(플레이어 색), 변 뒤 골 띠 18px, 모서리 벽, 중앙 원·발사 장치 (§6)
+    const grd = ctx.createLinearGradient(0, T, 0, B); grd.addColorStop(0, '#9EDFC6'); grd.addColorStop(1, '#CFF4E4'); ctx.fillStyle = grd; ctx.fillRect(L, T, S, S);
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; for (let k = 50; k < S; k += 50) { ctx.beginPath(); ctx.moveTo(L + k, T); ctx.lineTo(L + k, B); ctx.moveTo(L, T + k); ctx.lineTo(R, T + k); ctx.stroke(); }
+    for (const p of P) { const a = pt(p, p.t0, 0), b = pt(p, p.t0 + S, 0); ctx.fillStyle = p.color + '2E'; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(CX, CY); ctx.fill();
+      const band = p.ax === 'x' ? [L, p.ny > 0 ? p.line - 18 : p.line, S, 18] : [p.nx > 0 ? p.line - 18 : p.line, T, 18, S]; ctx.fillStyle = p.gflash > 0 ? p.gcol : p.color + '99'; ctx.fillRect(...band);
+      ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, T); ctx.lineTo(R, B); ctx.moveTo(R, T); ctx.lineTo(L, B); ctx.stroke();
+    ctx.strokeStyle = palette.ink; ctx.lineWidth = 8; for (const p of P) [p.t0, p.t0 + S - WALL].forEach(t => { const u = pt(p, t, 0), v = pt(p, t + WALL, 0); ctx.beginPath(); ctx.moveTo(u.x, u.y); ctx.lineTo(v.x, v.y); ctx.stroke(); });
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(CX, CY, 40, 0, 7); ctx.stroke();
+    const ps = pulse > 0 ? 1 + 0.3 * Math.sin(Math.PI * (0.2 - pulse) / 0.2) : 1; ctx.fillStyle = '#8A93A6'; ctx.beginPath(); ctx.arc(CX, CY, 22 * ps, 0, 7); ctx.fill(); ctx.fillStyle = '#B8C0D0'; ctx.beginPath(); ctx.arc(CX, CY, 12 * ps, 0, 7); ctx.fill();
+    if (!started) drawBall(ctx, { x: CX, y: CY, last: -1, age: 1, hist: [], smash: 0 }); // 타이틀 장면: 발사 장치 위에 공 하나
+    const ended = phase === 'end' || g.state() === 'end', max = Math.max(...P.map(p => p.score)), min = Math.min(...P.map(p => p.score));
+    for (const p of P) { // 플라밍고는 변 바깥 18px, 회전 없이 정면 (§6). 포즈: 스매시 hit · 득점 jump · 실점 dizzy · 이동 run · 종료 1위 fly / 꼴찌 sleep
+      const f = pt(p, p.pos, -18), moving = Math.abs(p.vel) > 20;
+      let pose = p.hitT > 0 ? 'hit' : p.jumpT > 0 ? 'jump' : p.dizzy > 0 ? 'dizzy' : moving ? 'run' : 'idle';
+      if (ended) pose = p.score === max ? 'fly' : p.score === min ? 'sleep' : 'idle';
+      const flip = p.ax === 'x' ? moving && p.vel < 0 : p.i === 3;
+      drawFlamingo(ctx, f.x, f.y - (p.jumpT > 0 ? Math.sin(Math.PI * p.jumpT / 0.6) * 24 : 0), 1.15, pose, g.time + p.i, p.color, { flip });
+      // 배리어: 색 alpha .45 + 흰 테두리 1.5px. 반사 0.08s 진하게, 스매시 0.12s 흰 섬광·두께 1.5배·#9C8AA5 테두리, A 누르면 10px 앞으로 (§1·§3·§7)
+      const push = p.push > 0.12 ? (0.18 - p.push) / 0.06 * 10 : Math.max(0, p.push) / 0.12 * 10, c = pt(p, p.pos, BC + push), sm = p.flash > 0 && p.big, th = sm ? TH * 1.5 : TH;
+      const fill = sm ? 'rgba(255,255,255,.9)' : p.flash > 0 ? p.color + 'E6' : p.color + '73';
+      const rect = p.ax === 'x' ? [c.x - BAR, c.y - th / 2, BAR * 2, th] : [c.x - th / 2, c.y - BAR, th, BAR * 2];
+      rr(ctx, ...rect, 6, fill); ctx.strokeStyle = sm ? '#9C8AA5' : palette.white; ctx.lineWidth = sm ? 3 : 1.5; ctx.beginPath(); ctx.roundRect(...rect, 6); ctx.stroke();
+      if (p.human && started && !ended && elapsed < 6 && p.score === 0) { const o = pt(p, p.pos, p.ax === 'x' ? 56 : 66); text(ctx, `${p.ax === 'x' ? '←→' : '↑↓'} 이동 · A 스매시`, o.x, o.y + 5, 14, palette.ink); }
+    }
+    for (const b of balls) drawBall(ctx, b);
+    for (const q of parts) { ctx.globalAlpha = clamp(q.life * 2, 0, 1); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, 3, 0, 7); ctx.fill(); }
+    for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 2); text(ctx, o.s, o.x, o.y, 26, palette.ink); text(ctx, o.s, o.x, o.y - 1.5, 26, o.c); } ctx.globalAlpha = 1;
+    // HUD (§6·§12-11): 타이머는 셸 자리(좌상단), 공 개수, 각 플레이어 점수 박스(배경 = 플레이어 색, 화살표 = 내 변 방향, 선두 금 테두리)
+    const rem = Math.max(0, LIMIT - elapsed); rr(ctx, 12, 10, 196, 34, 10, 'rgba(255,246,234,.92)'); text(ctx, `남은 시간 ${rem.toFixed(1)}s`, 22, 34, 20, rem <= 10 ? palette.red : palette.ink, 'left');
+    text(ctx, `공 ×${balls.length}`, 22, 66, 15, 'rgba(255,255,255,.7)', 'left', 'normal');
+    P.forEach((p, i) => { const [x, y] = HUDP[i]; rr(ctx, x - 58, y - 36, 116, 72, 12, p.color + '40');
+      if (max > 0 && p.score === max) { ctx.strokeStyle = palette.gold; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(x - 58, y - 36, 116, 72, 12); ctx.stroke(); }
+      drawPlayerTag(ctx, x - 12, y - 17, i); text(ctx, ARROW[i], x + 38, y - 11, 16, p.color); text(ctx, `${p.score} / ${WIN}`, x, y + 24, 30, p.color); });
+    if (phase === 'end' && g.state() === 'play') { // 5점 → "NP 승리!"(승자 색) 1.2s, 시간 종료 → "끝!" 1.0s. 그 뒤 셸 순위 화면 (§7)
+      const five = endMsg !== '끝!'; rr(ctx, CX - 210, CY - 52, 420, 104, 18, 'rgba(58,36,48,.82)'); if (five) text(ctx, '5점 선착!', CX, CY - 22, 18, palette.gold);
+      ctx.save(); ctx.font = 'bold 52px sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 6; ctx.strokeStyle = palette.ink; ctx.fillStyle = endCol; ctx.strokeText(endMsg, CX, CY + (five ? 32 : 20)); ctx.fillText(endMsg, CX, CY + (five ? 32 : 20)); ctx.restore(); }
+  },
+  result() { // 동점은 같은 점수를 그대로 넘겨 셸이 공동 순위로 처리 (원작은 퀴즈로 결정 — §2)
+    const max = Math.max(...P.map(p => p.score)), w = P.filter(p => p.score === max).map(p => p.name);
+    return { scores: P.map(p => p.score), text: max >= WIN ? `${w[0]} 5점 선착 승리!` : `${w.length > 1 ? '공동 승자' : '승자'} ${w.join('·')} — ${max}점` };
+  } });
+</script></body></html>

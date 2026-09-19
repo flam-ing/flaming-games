@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>알 구조대 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ←→ 를 누르고 있으면 그쪽으로 기울이기 · 떼면 가운데 · 빨간 붐볼은 피하기</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, bg, text, rr, rand, clamp, lerp, slots } = STADIUM;
+// 원작 Egg Emergency (specs/eggs.md): 4칸 개별 구역, 알 100개 + 붐볼 14개가 4명 모두에게 같은 순서·타이밍으로 떨어진다. 시간 제한 없음 → 알이 다 떨어지면 끝.
+const COL = 240, LDX = 70, TAG_Y = 20, BELT_Y = 66, DROP_Y = BELT_Y - 15, BASKET_Y = 400, WATER_Y = 470, SPLASH_Y = 480, LEAD = 0.6, EGGS = 100, VOLTS = 14, LIMIT = 95;
+const colX = i => 120 + i * COL;
+const gap = e => lerp(0.75, 0.38, e), fall = e => lerp(1.0, 0.6, e); // 낙하 간격 · 출구→판정선 도달 시간(초), e = 알 진행도 0..1 (§5)
+// CPU 행동 모델 (§8): d = 낙하 시작→판단 지연 [평균, σ]초, acc = 알 레인 정확도, rec = 붐볼 인식률, m = 실수 확률, hold = 받은 뒤 그 레인에 머무를 확률. 0 쉬움 · 1 보통 · 2 어려움 · 3 매우 어려움
+const AI = [{ d: [.45, .12], acc: .80, rec: .55, m: .12, hold: .5 }, { d: [.32, .09], acc: .90, rec: .75, m: .06, hold: .4 }, { d: [.22, .06], acc: .96, rec: .90, m: .03, hold: .25 }, { d: [.14, .04], acc: .99, rec: .97, m: .01, hold: .1 }];
+const CPU_LV = [2, 1, 0]; // 셸에 난이도 API가 없어 CPU 슬롯 순서대로 어려움·보통·쉬움 (사람이 차지한 슬롯의 등급은 다음 CPU로 이월)
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(Math.PI * 2 * Math.random());
+const pick = a => a[Math.floor(Math.random() * a.length)], ri = (a, b) => a + Math.floor(rand(0, b - a + 1));
+let g, P, seq, next, objs, parts, pops, elapsed, seqT, left, endT, done, finaled;
+
+function buildSeq() { // 알은 같은 레인 묶음(초반 2~4 · 중반 1~3 · 후반 1~2)으로, 첫 묶음은 가운데. 붐볼은 6번째 이후 알 뒤에 붙고 60%는 같은 레인(트랩)
+  const eggs = []; let lane = 0;
+  while (eggs.length < EGGS) {
+    const n = eggs.length, len = n < 40 ? ri(2, 4) : n < 80 ? ri(1, 3) : ri(1, 2);
+    for (let j = 0; j < len && eggs.length < EGGS; j++) eggs.push({ egg: true, lane });
+    lane = lane === 0 ? pick([-1, 1]) : Math.random() < (eggs.length >= 80 ? 0.5 : 0.4) ? -lane : 0; // 묶음 전환: 좌↔우 직행 40% (후반 50%), 나머지는 중앙 경유
+  }
+  const ends = eggs.map((e, k) => k).filter(k => k >= 5 && k <= EGGS - 2 && eggs[k + 1].lane !== eggs[k].lane), vAt = new Set(); // 붐볼은 주로 묶음 끝(70%) 뒤에 — 원작 트랩 (note 9)
+  while (vAt.size < VOLTS) vAt.add(Math.random() < 0.7 && ends.length ? pick(ends) : ri(5, EGGS - 2));
+  const s = []; eggs.forEach((e, k) => { s.push(e); if (vAt.has(k)) s.push({ egg: false, lane: Math.random() < 0.6 ? e.lane : pick([-1, 0, 1].filter(l => l !== e.lane)) }); });
+  let t = 1.0, ne = 0; for (const o of s) { const e = ne / (EGGS - 1); o.t0 = t; o.vy = (BASKET_Y - DROP_Y) / fall(e); o.stun = clamp(gap(e) * 1.2, 0.45, 0.9); t += gap(e); if (o.egg) ne++; }
+  return s;
+}
+function pop(p, s, c) { pops.push({ x: colX(p.i) + p.lx, y: BASKET_Y - 52, s, c, life: 0.7 }); }
+function splash(x, n) { for (let k = 0; k < n; k++) parts.push({ x: x + rand(-8, 8), y: SPLASH_Y, vx: rand(-90, 90), vy: rand(-260, -120), life: rand(0.3, 0.5) }); }
+function plan(p, o) { // CPU: 낙하 시작 순간 인지 → 지연 뒤 목표 레인 확정. 실수면 엉뚱한 레인/무입력, 붐볼 인식 실패면 알로 착각해 받으러 감(감전), 알 판단 실패면 가만히(원작 CPU가 멍하니 놓치는 패턴)
+  const a = AI[p.lv]; let lane = null;
+  if (Math.random() < a.m) lane = Math.random() < 0.5 ? pick([-1, 0, 1].filter(l => l !== o.lane)) : null;
+  else if (!o.egg) lane = Math.random() < a.rec ? (o.lane === 0 ? pick([-1, 1]) : 0) : o.lane; // 피하기: 중앙 우선
+  else if (Math.random() < a.acc) lane = o.lane;
+  if (lane !== null) p.q.push({ at: seqT + Math.max(0.05, gauss(a.d[0], a.d[1])), o, lane });
+}
+function catchEgg(p) { // +1, eat 0.15s, 카운터 확대, 연두 팝업
+  p.count++; p.eat = 0.15; p.bump = 0.2; pop(p, '+1', palette.green); if (p.human) sfx.tick();
+  if (!p.human) p.rest = Math.random() < AI[p.lv].hold ? p.lane : 0; // 복귀 습관: 계획이 비면 hold 확률로 그 레인에 머무르고, 아니면 중앙으로
+}
+function zap(p, o) { // 붐볼: 즉시 max(0, n−5), 잃은 만큼 알이 주머니에서 포물선으로 튀어 물로. 스턴 = 다음 알 하나를 놓칠 길이 (clamp(gap×1.2, .45, .9))
+  const lost = Math.min(5, p.count); p.count -= lost; p.stun = o.stun; p.shake = 0.5; p.spark = 0.4; pop(p, lost ? '−' + lost : '찌릿!', palette.red); sfx.bad();
+  for (let k = 0; k < lost; k++) parts.push({ x: colX(p.i) + p.lx, y: BASKET_Y, vx: rand(-90, 90), vy: rand(-300, -220), life: 1.5, egg: true, cx: colX(p.i) });
+}
+function drawEgg(ctx, x, y, rot, s = 1) { // 흰 알 + 연분홍 반점
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  ctx.fillStyle = palette.white; ctx.strokeStyle = '#E3D6C8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, 11, 14, 0, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = palette.pinkLight; [[-4, -5], [4, 2], [-2, 7]].forEach(([a, b]) => { ctx.beginPath(); ctx.arc(a, b, 2.2, 0, 7); ctx.fill(); }); ctx.restore();
+}
+function drawVolt(ctx, x, y) { // 붐볼: 위 빨강 / 아래 흰 구체, 성난 눈
+  ctx.save(); ctx.translate(x, y);
+  ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(0, 0, 14, 0, 7); ctx.fill();
+  ctx.fillStyle = palette.red; ctx.beginPath(); ctx.arc(0, 0, 14, Math.PI, 0); ctx.fill();
+  ctx.strokeStyle = palette.beak; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 14, 0, 7); ctx.moveTo(-14, 0); ctx.lineTo(14, 0); ctx.stroke();
+  ctx.fillStyle = palette.white; [-5, 5].forEach(ex => { ctx.beginPath(); ctx.ellipse(ex, -5, 3.5, 2.5, 0, 0, 7); ctx.fill(); });
+  ctx.fillStyle = palette.ink; [-4, 6].forEach(ex => { ctx.beginPath(); ctx.arc(ex, -5, 1.5, 0, 7); ctx.fill(); });
+  ctx.strokeStyle = palette.ink; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-9, -10); ctx.lineTo(-2, -7); ctx.moveTo(9, -10); ctx.lineTo(2, -7); ctx.stroke(); ctx.restore();
+}
+
+g = Game({ id: 'eggs', title: '알 구조대', howto: ['←→ 를 누르고 있으면 그쪽으로 몸을 기울여요', '안 누르면 가운데 알을 받아요 · 빨간 붐볼은 알 −5', '알 100개가 다 떨어지면 끝! 가장 많이 받은 쪽이 승리'], duration: 0,
+  init() {
+    let c = 0; // 4명 고정: 사람은 입력, 나머지는 CPU (슬롯 순서대로 어려움·보통·쉬움)
+    P = slots().map(s => ({ ...s, lane: 0, want: 0, lx: 0, count: 0, stun: 0, eat: 0, bump: 0, shake: 0, spark: 0, L: false, R: false, tL: 0, tR: 0, q: [], rest: 0, lv: s.human ? -1 : CPU_LV[Math.min(c++, 2)] }));
+    seq = buildSeq(); next = 0; objs = []; parts = []; pops = []; elapsed = 0; seqT = 0; left = EGGS; endT = 0; done = false; finaled = false;
+  },
+  update(dt) {
+    elapsed += dt; if (elapsed > LIMIT) g.finish(); // 안전장치 (정상 플레이는 ≈65초에 알이 소진돼 끝난다)
+    if (!done) {
+      seqT += dt;
+      while (next < seq.length && (next < 2 ? seqT >= seq[next].t0 - 2 * LEAD : seqT >= seq[next - 2].t0)) objs.push({ ...seq[next++], y: DROP_Y, bx: 100, phase: 0, st: [0, 0, 0, 0] }); // k번째가 떨어질 때 k+2번째가 벨트에 올라와 다음 2개가 항상 보인다(예고)
+      for (const p of P) {
+        if (p.human) { const k = g.p(p.i), L = k.down('left'), R = k.down('right'); if (L && !p.L) p.tL = seqT; if (R && !p.R) p.tR = seqT; p.L = L; p.R = R; p.want = L && R ? (p.tL > p.tR ? -1 : 1) : L ? -1 : R ? 1 : 0; } // 홀드형, 둘 다 누르면 나중 쪽
+        else { p.q = p.q.filter(d => !d.o.st[p.i]); const d = p.q.find(d => d.at <= seqT); p.want = d ? d.lane : p.rest; } // 판단이 끝난 것 중 가장 먼저 도착할 오브젝트에 맞춰 선다(현재 알을 받기 전엔 다음 알로 안 옮김). 없으면 복귀 습관대로
+        if (p.stun > 0) p.stun -= dt; else p.lane = p.want; // 감전 중엔 입력 무시, 풀리면 현재 홀드 상태를 다시 읽음. 판정은 입력 프레임 즉시, 스프라이트만 ~90ms 보간
+        p.lx += (p.lane * LDX - p.lx) * Math.min(1, dt * 24); p.eat -= dt; p.bump -= dt; p.shake -= dt; p.spark -= dt;
+      }
+      let slot = 0; for (const o of objs) {
+        if (o.phase === 0) { if (seqT < o.t0) { const r = o.t0 - seqT, tx = r > LEAD ? (slot++ ? 100 : 60) : lerp(60, o.lane * LDX, 1 - r / LEAD); slot = Math.max(slot, 1); o.bx += (tx - o.bx) * Math.min(1, dt * 14); continue; } o.phase = 1; if (o.egg) left--; P.forEach(p => { if (!p.human) plan(p, o); }); }
+        o.y += o.vy * dt;
+        P.forEach((p, i) => { // 판정: 중심 y가 [BASKET_Y−20, +20]에 있는 프레임에 현재 레인이 맞으면 수령(스턴 중엔 판정 꺼짐). 지나치면 늦게 기울여도 못 받음
+          if (o.st[i]) return;
+          if (o.y > BASKET_Y + 20) o.st[i] = 2;
+          else if (o.y >= BASKET_Y - 20 && p.lane === o.lane && p.stun <= 0) { o.st[i] = 1; o.egg ? catchEgg(p) : zap(p, o); }
+        });
+        if (o.y > SPLASH_Y) { o.phase = 2; let miss = false; P.forEach((p, i) => { if (o.st[i] !== 1) { splash(colX(i) + o.lane * LDX, o.egg ? 5 : 3); if (p.human) miss = true; } }); if (miss) sfx.beep(320, .06, 'sine', .04); }
+      }
+      objs = objs.filter(o => o.phase < 2);
+      if (next >= seq.length && !objs.length) done = true;
+    } else { // 마지막 알 처리 → 0.8s 정지 → "끝!" + 1위 점프하며 알 던지기 · 꼴찌 sleep → 셸 순위 화면
+      endT += dt; for (const p of P) { p.eat -= dt; p.bump -= dt; p.shake -= dt; p.spark -= dt; }
+      if (endT >= 0.8 && !finaled) { finaled = true; sfx.go(); const max = Math.max(...P.map(p => p.count)); P.forEach(p => { if (p.count === max) for (let k = 0; k < 3; k++) parts.push({ x: colX(p.i) + p.lx, y: BASKET_Y - 20, vx: rand(-120, 120), vy: rand(-560, -420), life: 0.85, egg: true, toss: true }); }); }
+      if (endT >= 2.2) g.finish();
+    }
+    const born = []; for (const q of parts) { q.vy += 1100 * dt; q.x += q.vx * dt; if (q.cx) q.x = clamp(q.x, q.cx - 110, q.cx + 110); q.y += q.vy * dt; q.life -= dt; if (q.egg && !q.toss && q.y > SPLASH_Y) { q.life = 0; born.push(q.x); } }
+    parts = parts.filter(q => q.life > 0); born.forEach(x => splash(x, 4));
+    for (const o of pops) { o.y -= 50 * dt; o.life -= dt; } pops = pops.filter(o => o.life > 0);
+  },
+  draw(ctx) {
+    bg(ctx, g.W, g.H, '#FFF1D6', '#EAF6D2'); // 부화장 벽: 크림 → 연두, 옅은 세로 줄무늬
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; for (let x = 12; x < g.W; x += 48) ctx.fillRect(x, 0, 22, WATER_Y);
+    ctx.fillStyle = palette.water; ctx.fillRect(0, WATER_Y, g.W, g.H - WATER_Y); // 호수: 놓친 알이 빠지는 곳
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; for (let i = 0; i < 16; i++) { const wx = (i * 62 + Math.sin(g.time * 2 + i) * 10 + g.W) % g.W; ctx.beginPath(); ctx.ellipse(wx, 488 + (i % 3) * 18, 26, 3.5, 0, 0, 7); ctx.fill(); }
+    if (!P) return;
+    const max = Math.max(...P.map(p => p.count)), min = Math.min(...P.map(p => p.count)), fin = done && endT >= 0.8;
+    P.forEach((p, i) => {
+      const cx = colX(i);
+      rr(ctx, cx - 120, 0, 240, 5, 0, p.color); // 칸 색 띠
+      rr(ctx, cx - 104, 434, 208, 40, 6, '#A8714E'); rr(ctx, cx - 104, 434, 208, 9, 4, '#C99470'); // 나무 발판
+      // 상단 컨베이어: 오른쪽 끝에서 굴러와 좌·중·우 출구로 떨어진다 — 다음 오브젝트가 미리 보이는 예고
+      rr(ctx, cx - 94, BELT_Y - 10, 206, 20, 6, '#5C5470');
+      ctx.save(); ctx.beginPath(); ctx.roundRect(cx - 94, BELT_Y - 10, 206, 20, 6); ctx.clip(); ctx.fillStyle = '#7A7290'; const off = 20 - (g.time * 70) % 20; for (let s = -20; s < 220; s += 20) ctx.fillRect(cx - 94 + s + off, BELT_Y - 10, 9, 20); ctx.restore();
+      for (let l = -1; l <= 1; l++) rr(ctx, cx + l * LDX - 13, BELT_Y + 8, 26, 12, 4, palette.pinkDark); // 출구 3개
+      for (const o of objs) { // 벨트 위(phase 0) → 낙하(phase 1, 이 칸에서 아직 안 받은 것만)
+        if (o.phase === 0) o.egg ? drawEgg(ctx, cx + o.bx, BELT_Y - 15, 0) : drawVolt(ctx, cx + o.bx, BELT_Y - 15);
+        else if (o.st[i] !== 1) o.egg ? drawEgg(ctx, cx + o.lane * LDX, o.y, Math.sin(seqT * 7 + o.t0) * 0.25) : drawVolt(ctx, cx + o.lane * LDX, o.y);
+      }
+      // 플라밍고: 기울이면 run(flip) + 살짝 회전, 받으면 eat, 감전 dizzy + 검은 점멸 + 번개 스파크, 종료 시 1위 jump · 꼴찌 sleep
+      const stun = p.stun > 0, dark = stun && p.spark > 0 && Math.floor(g.time * 10) % 2 === 0;
+      const pose = fin ? (p.count === max ? 'jump' : p.count === min && min < max ? 'sleep' : 'idle') : stun ? 'dizzy' : p.eat > 0 ? 'eat' : Math.abs(p.lx - p.lane * LDX) > 4 ? 'run' : 'idle';
+      const fx = cx + p.lx + (p.shake > 0 ? rand(-2, 2) : 0), fy = BASKET_Y - 4 - (pose === 'jump' ? Math.abs(Math.sin(g.time * 5)) * 40 : 0);
+      drawFlamingo(ctx, fx, fy, 1.2, pose, g.time + i, dark ? '#2B2B2B' : p.color, { flip: p.lane < 0, rot: stun || fin ? 0 : p.lane * 0.2 });
+      if (p.spark > 0) { ctx.strokeStyle = palette.gold; ctx.lineWidth = 2.5; for (let k = 0; k < 6; k++) { const a = k * 1.05 + g.time * 9, r2 = 40 + Math.sin(g.time * 40 + k) * 6; ctx.beginPath(); ctx.moveTo(fx + Math.cos(a) * 22, fy + Math.sin(a) * 22); ctx.lineTo(fx + Math.cos(a + 0.3) * r2, fy + Math.sin(a + 0.3) * r2); ctx.stroke(); } }
+      else if (stun) for (let k = 0; k < 3; k++) { const a = g.time * 6 + k * 2.1; text(ctx, '★', fx + Math.cos(a) * 26, fy - 50 + Math.sin(a) * 6, 15, palette.gold); }
+      if (p.human && g.state() === 'play' && !done && seqT < 6 && p.count === 0) text(ctx, '←→ 기울여서 받기!', cx, BASKET_Y - 64, 15, palette.pinkDark);
+      // HUD: 배지 + 큰 알 카운터 (받으면 잠깐 커지고, 감전되면 붉게 흔들리며 줄어듦)
+      drawPlayerTag(ctx, cx - 62, TAG_Y, i); drawEgg(ctx, cx + 20, TAG_Y + 1, 0, 0.75);
+      const sc = 1 + Math.max(0, p.bump) * 1.5; ctx.save(); ctx.translate(cx + 38 + (p.shake > 0 ? rand(-3, 3) : 0), TAG_Y); ctx.scale(sc, sc); text(ctx, String(p.count), 0, 11, 30, p.shake > 0 ? palette.red : palette.ink, 'left'); ctx.restore();
+    });
+    for (let k = 0; k <= 4; k++) rr(ctx, k * COL - 7, 0, 14, WATER_Y + 12, 0, '#8C5A3C'); // 칸 사이 기둥
+    for (const q of parts) { if (q.egg) drawEgg(ctx, q.x, q.y, q.life * 6, 0.8); else { ctx.globalAlpha = clamp(q.life * 3, 0, 1); ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(q.x, q.y, 3, 0, 7); ctx.fill(); ctx.globalAlpha = 1; } }
+    for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 2.5); text(ctx, o.s, o.x, o.y, 24, o.c); ctx.globalAlpha = 1; }
+    rr(ctx, g.W / 2 - 70, 506, 140, 26, 13, 'rgba(58,36,48,0.7)'); text(ctx, `남은 알 ${left}`, g.W / 2, 524, 15, palette.cream);
+    if (g.state() === 'play' && seqT > 0 && seqT < 0.6) text(ctx, '시작!', g.W / 2, 250, 48, palette.pinkDark);
+    if (fin && g.state() === 'play') { ctx.save(); ctx.font = 'bold 110px sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 8; ctx.strokeStyle = palette.pinkDark; ctx.fillStyle = palette.white; ctx.strokeText('끝!', g.W / 2, 300); ctx.fillText('끝!', g.W / 2, 300); ctx.restore(); }
+  },
+  result() { // 동점은 같은 점수를 그대로 넘겨 셸이 공동 순위로 처리 (원작은 퀴즈로 결정하지만 우리는 퀴즈가 없음)
+    const max = Math.max(...P.map(p => p.count)), w = P.filter(p => p.count === max).map(p => p.name);
+    return { scores: P.map(p => p.count), text: `${w.length > 1 ? '공동 승자' : '승자'} ${w.join('·')} — 알 ${max}개 / ${EGGS}개` };
+  } });
+</script></body></html>

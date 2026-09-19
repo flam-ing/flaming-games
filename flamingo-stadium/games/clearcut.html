@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>플라밍고 벌목왕 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: A 버튼 = 베기 (라운드당 1번)</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, bg, rr, rand, clamp, lerp } = STADIUM;
+// 원작 Clear Cut Challenge(포켓몬 스타디움 2): 거미가 매달아 떨어뜨리는 통나무를 A 한 번으로 흰 선에 맞춰 베기. 5라운드 합계 승부.
+const PX = [150, 370, 590, 810], FEET = 430, BLADE_Y = 300, LOG_H = 200, LOG_W = 56, WAIT_TOP = 50, LAND = 500, REST_TOP = LAND - LOG_H, BODY_Y = FEET - 34 * 1.8;
+// LAND: 통나무 하단 착지 y. 받침대 구멍 속으로 70px 꽂히므로(칼날 y=300보다 위에서 멈추면 윗부분 선은 영영 칼날에 못 옴) 모든 흰 선(15~85%)이 칼날을 지난다.
+const ROUNDS = 5, SAFETY = 60, V0 = 360, GRAV = 900, READY_T = 1.2, RAISE_T = 2.0, RESULT_T = 2.0, GAP_T = 1.0;
+const LINE_RANGE = [[.3, .7], [.25, .72], [.22, .75], [.2, .8], [.2, .8]]; // 라운드별 흰 선 위치(통나무 상단 기준 비율)
+const DIFF = { normal: { mean: 30, sig: 28, delay: 0.18, miss: 0.06 }, hard: { mean: 12, sig: 14, delay: 0.16, miss: 0.02 } }; // CPU: 목표 오프셋(px, +=일찍)·오차·반응 지연·완전 실수 확률
+let g, P, phase, banner = 0, v0 = V0, pt, round, holdT, elapsed, over, popups, parts, tickN, thumped, perfectSfx, sway;
+const gauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(6.2832 * Math.random());
+const active = () => phase === 'raise' || phase === 'hold' || phase === 'drop';
+
+function startRound() {
+  round++; phase = 'raise'; pt = 0; banner = 0.6; v0 = V0 * rand(0.9, 1.1); tickN = 0; thumped = false; perfectSfx = false;
+  const [lo, hi] = LINE_RANGE[round - 1];
+  P.forEach(p => {
+    p.log = { top: REST_TOP, vy: 0, frac: rand(lo, hi), cut: false, landed: false, up: null }; p.swung = false;
+    // CPU 난이도: 사람 바로 다음 슬롯 1명만 Hard, 나머지 Normal (1인 플레이 = Hard 1 + Normal 2). 매 라운드 새로 뽑음
+    if (!g.isHuman(p.i)) { const D = DIFF[p.i - g.humans === 0 ? 'hard' : 'normal']; p.off = D.mean + gauss() * D.sig; p.delay = D.delay + rand(0, 0.03); p.skip = Math.random() < D.miss; }
+  });
+}
+function burst(x, y, n, c, spd) { for (let k = 0; k < n; k++) parts.push({ x, y, vx: rand(-spd, spd), vy: rand(-spd * 1.3, -spd * 0.2), life: rand(0.3, 0.6), c }); }
+function shamisen() { sfx.beep(440, 0.08, 'sawtooth', 0.15); setTimeout(() => sfx.beep(392, 0.08, 'sawtooth', 0.15), 60); setTimeout(() => sfx.beep(330, 0.25, 'sawtooth', 0.2), 120); }
+function judge(p, pts, kind) {
+  p.score += pts; p.hist.push(pts);
+  let pose = 'idle', s = (pts > 0 ? '+' : '') + pts, c = palette.white, size = 32, sub = null;
+  const human = g.isHuman(p.i);
+  if (kind === 'perfect') { p.perfects++; pose = 'jump'; c = palette.gold; size = 40; sub = '퍼펙트!'; if (!perfectSfx) { perfectSfx = true; shamisen(); sfx.good(); } }
+  else if (pts > 0) { if (human) sfx.tap(); }
+  else { pose = 'dizzy'; c = palette.red; s = (kind === 'whiff' ? '헛스윙 ' : kind === 'miss' ? '놓침 ' : '') + pts; if (human && kind !== 'miss') sfx.bad(); }
+  if (p.pose === 'hit') p.next = pose; else { p.pose = pose; p.poseT = pose === 'idle' ? 0 : 1; }
+  popups.push({ x: p.x, y: 200, s, c, size, sub, life: 2 });
+}
+function swing(p) {
+  const L = p.log; if (p.swung || !active() || L.landed) return;
+  p.swung = true; p.pose = 'hit'; p.poseT = 0.35; p.flash = 0.06; sfx.hit();
+  // 낙하 전(들어올리기·대기) 또는 몸통이 칼날 높이에 없으면 헛스윙
+  if (phase !== 'drop' || L.top + LOG_H < BLADE_Y || L.top > BLADE_Y) return judge(p, -10, 'whiff');
+  const d = BLADE_Y - (L.top + LOG_H * L.frac); // +: 선이 아직 칼날 위(일찍)  −: 이미 지나감(늦게)
+  const pts = Math.abs(d) <= 12 ? 20 : d > 12 ? Math.max(1, 10 - Math.floor((d - 12) / 10)) : Math.max(-10, -Math.ceil((-d - 12) / 10));
+  L.cut = true; L.up = { h: BLADE_Y - L.top, y: L.top, x: 0, vy: -200, vx: 110, rot: 0, rest: false, alpha: 1 };
+  burst(p.cx, BLADE_Y, 8, '#d9b27c', 180);
+  judge(p, pts, pts === 20 ? 'perfect' : pts > 0 ? 'early' : 'late');
+}
+function otext(ctx, s, x, y, size, color, sw = 4) { ctx.save(); ctx.font = `bold ${size}px sans-serif`; ctx.textAlign = 'center'; ctx.lineJoin = 'round'; if (sw) { ctx.lineWidth = sw; ctx.strokeStyle = palette.ink; ctx.strokeText(s, x, y); } ctx.fillStyle = color; ctx.fillText(s, x, y); ctx.restore(); }
+function drawPiece(ctx, cx, top, h, lineY, rot) { // 통나무 조각: 상단 = top, 높이 h, 흰 선 절대 y = lineY (조각 밖이면 안 그림)
+  ctx.save(); ctx.translate(cx, top + h / 2); ctx.rotate(rot); const w = LOG_W / 2, t = -h / 2;
+  rr(ctx, -w, t, LOG_W, h, 6, '#8b5a2b');
+  ctx.fillStyle = '#6b4320'; for (let y = t + 16; y < t + h - 8; y += 24) { ctx.fillRect(-w + 6, y, 18, 3); ctx.fillRect(4, y + 10, 16, 3); }
+  ctx.fillStyle = '#d9b27c'; ctx.beginPath(); ctx.ellipse(0, t, w, 7, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#b8905a'; ctx.lineWidth = 1.5; for (const r of [0.65, 0.35]) { ctx.beginPath(); ctx.ellipse(0, t, w * r, 7 * r, 0, 0, 7); ctx.stroke(); }
+  const ly = lineY - top; if (ly > 4 && ly < h - 2) { ctx.fillStyle = palette.white; ctx.fillRect(-w, t + ly - 1.5, LOG_W, 3); } // ly = 조각 상단 기준 오프셋(가시성 판정), 그리기는 중심 기준 t+ly
+  ctx.restore();
+}
+
+g = Game({ id: 'clearcut', title: '플라밍고 벌목왕', howto: ['통나무가 떨어지면 A 버튼으로 베기', '흰 선에 딱 맞추면 20점, 늦으면 감점', '5라운드 합계로 승부'], duration: 0,
+  init() {
+    // 사람/CPU 여부는 스냅샷 대신 매 프레임 g.isHuman(i)로 읽음(타이틀에서 숫자키와 SPACE가 같은 프레임에 오면 init이 먼저 돌기 때문)
+    P = STADIUM.slots().map((s, i) => ({ i, x: PX[i], cx: PX[i] - 70, color: s.color, score: 0, perfects: 0, hist: [], pose: 'idle', poseT: 0, next: null, flash: 0, swung: false, win: false,
+      log: { top: REST_TOP, vy: 0, frac: 0.5, cut: false, landed: false, up: null } }));
+    phase = 'ready'; pt = 0; round = 0; holdT = 0; elapsed = 0; over = false; popups = []; parts = []; tickN = 0; thumped = false; perfectSfx = false; sway = 0;
+  },
+  update(dt) {
+    elapsed += dt; pt += dt; if (banner > 0) banner -= dt; if (sway > 0) sway -= dt;
+    if (elapsed > SAFETY && !over) { over = true; g.finish(); return; } // 안전장치
+    P.forEach((p, i) => {
+      if (g.isHuman(i)) { const k = g.p(i); if (k.hit('a') || k.hit('b')) swing(p); }
+      else if (phase === 'drop' && !p.swung && !p.skip && pt >= p.delay && BLADE_Y - (p.log.top + LOG_H * p.log.frac) - p.log.vy * dt / 2 <= p.off) swing(p); // 반 프레임 예측(프레임 양자화 편향 제거)
+      if (p.flash > 0) p.flash -= dt;
+      const u = p.log.up; // 위 조각: 튀어 오르며 회전 → 착지 → 사라짐(조각 정리)
+      if (u && !u.rest) { u.vy += GRAV * dt; u.y += u.vy * dt; u.x += u.vx * dt; u.vx *= 1 - dt * 3; u.rot += 3 * dt; if (u.y + u.h / 2 >= 425) u.rest = true; }
+      else if (u && u.alpha > 0) u.alpha -= dt * 2;
+      if (p.poseT > 0) { p.poseT -= dt; if (p.poseT <= 0) { p.pose = p.next || 'idle'; p.poseT = p.pose === 'idle' ? 0 : 1; p.next = null; } }
+    });
+    if (phase === 'ready') { if (pt >= READY_T) startRound(); }
+    else if (phase === 'raise') {
+      const t = Math.min(1, pt / RAISE_T); P.forEach(p => p.log.top = lerp(REST_TOP, WAIT_TOP, t));
+      if (tickN < 4 && pt >= tickN * 0.3) { tickN++; sfx.tick(); }
+      if (pt >= RAISE_T) { phase = 'hold'; pt = 0; holdT = rand(0.8, 2.4); }
+    } else if (phase === 'hold') {
+      P.forEach(p => p.log.top = WAIT_TOP + Math.sin(g.time * 5) * 2);
+      if (pt >= holdT) { phase = 'drop'; pt = 0; sway = 0.5; sfx.pop(); P.forEach(p => p.log.vy = v0); }
+    } else if (phase === 'drop') {
+      let allDown = true;
+      P.forEach(p => {
+        const L = p.log;
+        if (!L.landed) {
+          L.vy += GRAV * dt; L.top += L.vy * dt;
+          if (L.cut ? L.top + LOG_H >= FEET + 10 : L.top + LOG_H >= LAND) {
+            if (!L.cut) L.top = REST_TOP; else L.vy = 0; L.landed = true; burst(p.cx, FEET, 6, 'rgba(255,255,255,.75)', 80);
+            if (!thumped) { thumped = true; sfx.beep(90, 0.15, 'square', 0.5); }
+            if (!p.swung) { p.swung = true; judge(p, -10, 'miss'); }
+          }
+        }
+        if (!L.landed || (L.up && !L.up.rest)) allDown = false;
+      });
+      if (allDown || pt > 2.5) { phase = 'result'; pt = 0; }
+    } else if (phase === 'result') {
+      if (pt >= RESULT_T) {
+        if (round >= ROUNDS) { phase = 'end'; pt = 0; const mx = Math.max(...P.map(p => p.score)); P.forEach(p => { p.win = p.score === mx; p.pose = p.win ? 'jump' : 'idle'; p.poseT = p.win ? 99 : 0; p.next = null; }); }
+        else { phase = 'gap'; pt = 0; }
+      }
+    } else if (phase === 'gap') { if (pt >= GAP_T) startRound(); }
+    else if (phase === 'end') { if (pt >= 1 && !over) { over = true; g.finish(); } }
+    popups.forEach(q => { q.life -= dt; q.y -= 10 * dt; }); popups = popups.filter(q => q.life > 0);
+    parts.forEach(q => { q.vy += 700 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; }); parts = parts.filter(q => q.life > 0);
+  },
+  draw(ctx) {
+    bg(ctx, g.W, g.H, '#bfe3ff', '#eaf6ff');
+    // 숲 실루엣 두 겹 + 잔디 + 나무 데크
+    ctx.fillStyle = '#2f6b3a'; for (let i = 0; i < 15; i++) { const x = i * 72 - 30, h = 90 + (i * 37) % 60; ctx.beginPath(); ctx.moveTo(x - 48, 322); ctx.lineTo(x, 322 - h); ctx.lineTo(x + 48, 322); ctx.fill(); }
+    ctx.fillStyle = '#3d7d47'; for (let i = 0; i < 15; i++) { const x = i * 72 + 8, h = 50 + (i * 53) % 40; ctx.beginPath(); ctx.moveTo(x - 40, 324); ctx.lineTo(x, 324 - h); ctx.lineTo(x + 40, 324); ctx.fill(); }
+    ctx.fillStyle = '#5aa14a'; ctx.fillRect(0, 316, g.W, 114);
+    ctx.fillStyle = '#c08a4e'; ctx.fillRect(0, 424, g.W, 116);
+    ctx.strokeStyle = '#a8743f'; ctx.lineWidth = 2; ctx.beginPath(); for (let y = 424; y < 540; y += 29) { ctx.moveTo(0, y); ctx.lineTo(g.W, y); } for (let x = 60; x < g.W; x += 220) { ctx.moveTo(x, 424); ctx.lineTo(x, 540); } ctx.stroke();
+    P.forEach((p, i) => {
+      const L = p.log, cx = p.cx;
+      // 받침대(구멍 뚫린 그루터기) + 칼날 높이 마커
+      rr(ctx, cx - 45, FEET, 90, 26, 8, '#a0703c'); ctx.fillStyle = '#c99560'; ctx.beginPath(); ctx.ellipse(cx, FEET, 45, 9, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#4a2e16'; ctx.beginPath(); ctx.ellipse(cx, FEET, 31, 6.5, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = phase === 'drop' ? palette.red : 'rgba(230,57,70,.35)'; ctx.beginPath(); ctx.moveTo(cx - 50, BLADE_Y - 8); ctx.lineTo(cx - 36, BLADE_Y); ctx.lineTo(cx - 50, BLADE_Y + 8); ctx.fill();
+      // 거미(회색 플라밍고) + 실
+      const sx = cx + (sway > 0 ? Math.sin(g.time * 25) * 6 * sway : 0), attached = phase === 'raise' || phase === 'hold';
+      ctx.strokeStyle = '#e8dcc0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(sx, 12); ctx.moveTo(sx, 46);
+      if (attached) ctx.lineTo(cx, L.top - 4); else ctx.lineTo(sx + Math.sin(g.time * 7) * 6, 60); ctx.stroke();
+      drawFlamingo(ctx, sx, 32, 0.75, 'fly', g.time + i, '#777777');
+      // 통나무(또는 두 조각)
+      const lineY = L.top + LOG_H * L.frac;
+      ctx.save(); ctx.beginPath(); ctx.rect(cx - 60, 0, 120, FEET + 5); ctx.clip(); // 구멍 아래로 들어간 부분은 가림
+      if (L.cut) drawPiece(ctx, cx, L.top + L.up.h, LOG_H - L.up.h, lineY, 0); else drawPiece(ctx, cx, L.top, LOG_H, lineY, 0);
+      ctx.restore();
+      if (L.cut && L.up.alpha > 0) { const u = L.up; ctx.globalAlpha = clamp(u.alpha, 0, 1); drawPiece(ctx, cx + u.x, u.y, u.h, u.y + LOG_H * L.frac, u.rot); ctx.globalAlpha = 1; }
+      if (p.flash > 0) rr(ctx, cx - 45, BLADE_Y - 2, 90, 4, 2, palette.white);
+      // 플라밍고 (통나무를 보고 섬, 1위는 종료 연출로 뜀)
+      const bounce = phase === 'end' && p.win ? -Math.abs(Math.sin(g.time * 8)) * 26 : 0;
+      drawFlamingo(ctx, p.x, BODY_Y + bounce, 1.8, p.pose, g.time + i, p.color, { flip: true });
+      // 상태: 태그 + 합계 + 라운드별 결과 점
+      if (g.state() !== 'play' && g.state() !== 'count') return; // 타이틀/종료 오버레이와 겹치지 않게 숨김
+      drawPlayerTag(ctx, p.x, 470, i);
+      otext(ctx, `${p.score}점`, p.x, 507, 24, p.score < 0 ? palette.red : palette.white);
+      for (let r = 0; r < ROUNDS; r++) { const v = p.hist[r]; ctx.fillStyle = v == null ? 'rgba(255,255,255,.35)' : v === 20 ? palette.gold : v > 0 ? palette.white : palette.red; ctx.beginPath(); ctx.arc(p.x - 28 + r * 14, 524, 5, 0, 7); ctx.fill(); }
+    });
+    parts.forEach(q => { ctx.globalAlpha = clamp(q.life * 2, 0, 1); ctx.fillStyle = q.c; ctx.fillRect(q.x - 3, q.y - 3, 6, 6); }); ctx.globalAlpha = 1;
+    popups.forEach(q => { ctx.save(); ctx.globalAlpha = clamp(q.life, 0, 1); otext(ctx, q.s, q.x, q.y, q.size, q.c); if (q.sub) otext(ctx, q.sub, q.x, q.y + 26, 18, palette.gold, 3); ctx.restore(); });
+    // HUD (통나무·거미와 겹치지 않는 상단 빈 띠에 배치)
+    if (g.state() !== 'play' && g.state() !== 'count') return;
+    if (banner > 0) otext(ctx, `라운드 ${round}`, g.W / 2, 250, 48, palette.gold, 5);
+    rr(ctx, 115, 10, 150, 40, 12, 'rgba(58,36,48,.72)'); otext(ctx, `라운드 ${Math.max(1, round)} / ${ROUNDS}`, 190, 38, 22, palette.gold, 0);
+    const hint = phase === 'ready' ? '준비…' : phase === 'raise' || phase === 'hold' ? '기다려… 떨어질 때 흰 선이 부리에 오면 A!' : phase === 'drop' ? '지금 베어라!' : phase === 'end' ? '벌목 끝!' : '';
+    if (hint) otext(ctx, hint, 630, 38, 16, palette.white, 3);
+  },
+  result() {
+    const sc = P.map(p => p.score), mx = Math.max(...sc), tie = sc.filter(v => v === mx).length > 1, w = P[sc.indexOf(mx)];
+    return { scores: sc, text: (tie ? '동점! ' : '') + `최고 ${mx}점 · 퍼펙트 ${w.perfects}회` };
+  } });
+</script></body></html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>달려라 플라밍고 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script><script>document.write('<link rel="stylesheet" href="../common/view3d.css">');</script></head>
+<body><div class="wrap"><canvas id="game" aria-label="달려라 플라밍고 경기 화면"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: A 버튼 연타 · ↑ 점프</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>document.write('<script src="../common/view3d.js"><\/script>');</script>
+<script>
+const stadiumView = STADIUM_3D.create('run', () => g);
+// Run Rattata Run (Pokémon Stadium 1, Kids Club) with flamingos — see specs/run.md.
+// 4 treadmill lanes: tap A to run, ↑ to jump the checkered boards, first to 50 m wins and the rest get 2.5 s to finish.
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, bg, text, rr, rand, clamp, lerp } = STADIUM;
+let g, P = [], raceT = 0, limitT = -1, bannerT = -1, winner = -1, over = false, parts = [], camX = 0;
+// world units are metres; PXM px per metre. Runner is fixed at RUN_X (back of the belt), the belt scrolls left under it.
+const TRACK = 50, PXM = 38, RUN_X = 150, LANE_TOP = 56, LANE_H = 121, SCALE = 1;
+const TAP_V = 0.55, MAX_V = 3.3, DECAY = 1.6, JUMP_T = 0.55, JUMP_H = 0.8, HURDLE_R = 0.35, HURDLE_H = 0.5, POP_GAP = 5;
+const STUN = 1.2, LIMIT = 2.5, BANNER = 2.0, SAFETY = 75;
+// CPU model (spec §8/§11): taps/s + wobble, hurdle reaction delay mean/σ (per race) after the jump window opens,
+// jump accuracy, extra pause after a crash, start delay. Slots get normal → hard- → hard (2+ humans: hard first).
+const DIFF = {
+  normal: { rate: 7.3, wob: 0.9, react: 0.22, rsd: 0.08, acc: 0.90, post: 0.2, start: 0.30 },
+  hardm: { rate: 7.5, wob: 0.7, react: 0.19, rsd: 0.07, acc: 0.93, post: 0.2, start: 0.24 },
+  hard: { rate: 8.2, wob: 0.6, react: 0.16, rsd: 0.06, acc: 0.96, post: 0.1, start: 0.18 } };
+// belt surface by section: grass → dirt → sand → dirt → grass → GOAL print → finish → grass
+const SEG = [[-20, 10, '#7CC36B'], [10, 20, '#C9915A'], [20, 35, '#F0D9A0'], [35, 40, '#C9915A'], [40, 45, '#7CC36B'], [45, 50, '#A8DE9A'], [50, 90, '#7CC36B']];
+const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 2;
+const laneTop = i => LANE_TOP + i * LANE_H, feetY = i => laneTop(i) + 108;
+
+function makeHurdles() { // ~one per 5 m section (85 %), ±1.5 m jitter, ≥3 m apart, none in the 45–50 m GOAL zone
+  const hs = []; let last = -9;
+  for (let k = 1; k <= 9; k++) {
+    if (Math.random() > 0.85) continue;
+    const d = Math.min(TRACK - 5.5, Math.max(last + 3, 5 * k + rand(-1.5, 1.5)));
+    if (d <= last + 2.9) continue;
+    hs.push({ d, pop: -1, hit: false, passed: false, plan: null }); last = d;
+  }
+  return hs;
+}
+function mk(s, d) {
+  return { ...s, dist: 0, v: 0, y: 0, jt: -1, stun: 0, fin: -1, finAt: 0, rank: 0, dnf: false, lastTap: -1, jumps: 0, anim: rand(0, 9), hs: makeHurdles(),
+    ai: d && { ...d, rate: d.rate + rand(-0.4, 0.4), react: Math.max(0.05, d.react + gauss() * d.rsd), tapAt: d.start, ph: rand(0, 6.28), per: rand(2, 4) } };
+}
+function puff(p, c, n, up = -90) { for (let k = 0; k < n; k++) parts.push({ x: RUN_X + rand(-14, 14), y: feetY(p.i) - 4, vx: rand(-90, 90), vy: rand(up, up * 0.3), life: rand(0.3, 0.6), c }); }
+function tap(p) { if (p.stun > 0 || p.fin >= 0 || p.dnf) return; p.v = Math.min(MAX_V, p.v + TAP_V); if (p.human) sfx.tap(); }
+function jump(p) { if (p.stun > 0 || p.fin >= 0 || p.dnf || p.jt >= 0) return; p.jt = 0; p.jumps++; }
+function crash(p, h) { // board folds flat, runner tumbles (hit 0.4 s) then wobbles up (dizzy 0.8 s); no knock-back
+  h.hit = true; p.stun = STUN; p.v = 0; p.jt = -1; p.y = 0; sfx.bad(); puff(p, palette.gold, 10);
+  if (p.ai) p.ai.tapAt = raceT + STUN + p.ai.post;
+}
+function finishRunner(p) { // finish time interpolated inside the frame (spec §4): ties are practically impossible
+  p.fin = raceT - (p.dist - TRACK) / Math.max(p.v, 0.01); p.dist = TRACK + 0.6; p.v = 0; p.jt = -1; p.y = 0; p.finAt = g.time;
+  if (limitT < 0) { limitT = LIMIT; sfx.win(); } else sfx.good(); // winner = lowest interpolated time, set after ranking
+  puff(p, p.color, 14, -170); puff(p, palette.gold, 8, -170);
+}
+function step(p, dt) {
+  p.anim += dt * (0.3 + p.v / MAX_V); // run animation speed follows the runner's speed
+  if (p.stun > 0) { p.stun -= dt; return; }
+  if (p.fin >= 0 || p.dnf) return;
+  p.v -= p.v * DECAY * dt; // speed keeps decaying (and taps keep adding) in the air — no slowdown for jumping
+  const air = p.jt >= 0;
+  if (air) { p.jt += dt; const u = Math.min(1, p.jt / JUMP_T); p.y = 4 * JUMP_H * u * (1 - u); }
+  p.dist += p.v * dt;
+  for (const h of p.hs) {
+    if (h.pop < 0 && h.d - p.dist <= POP_GAP) { h.pop = raceT; if (p.human) sfx.tick(); } // board rises 5 m ahead
+    if (h.passed || h.hit) continue;
+    if (h.d <= p.dist - HURDLE_R) { h.passed = true; continue; } // board fully behind (spec §3 window: 0.55·v − 0.35)
+    if (air) continue;
+    else if (Math.abs(h.d - p.dist) < HURDLE_R) { crash(p, h); return; } // ran into it (too late, or jumped too early and landed short)
+  }
+  if (air && p.jt >= JUMP_T) { p.jt = -1; p.y = 0; puff(p, '#D9C39A', 6); } // landing dust
+  if (p.dist >= TRACK) finishRunner(p);
+}
+function cpu(p) { // virtual taps/jumps through the same tap()/jump() pipeline as humans
+  const a = p.ai; if (p.fin >= 0 || p.dnf || p.stun > 0) return;
+  const rate = a.rate + a.wob * Math.sin(raceT * 6.283 / a.per + a.ph); // tap rate drifts on a 2–4 s cycle
+  if (raceT >= a.tapAt) { tap(p); a.tapAt = Math.max(a.tapAt, raceT - 0.1) + rand(0.85, 1.15) / rate; } // accumulate so frame rate doesn't lower the tap rate
+  if (p.jt >= 0) return;
+  const h = p.hs.find(h => !h.hit && !h.passed); if (!h || h.pop < 0) return;
+  const gap = h.d - p.dist;
+  if (!h.plan) { // decided when the board pops: accurate = react after the jump window opens; miss = 40 % too early (land short), 60 % too late
+    const r = Math.random(), miss = r >= a.acc, early = miss && (r - a.acc) / (1 - a.acc) < 0.4;
+    h.plan = { early: early ? rand(2.5, 3.5) : 0, late: miss && !early, react: a.react * rand(0.7, 1.3), seen: -1 };
+  }
+  if (h.plan.late) return;
+  if (h.plan.early) { if (gap <= h.plan.early) { h.plan.early = 0; h.plan.late = true; jump(p); } return; }
+  if (h.plan.seen < 0 && gap <= JUMP_T * p.v) h.plan.seen = raceT; // window opens once one jump's flight reaches the board (speed dependent)
+  if (h.plan.seen >= 0 && raceT - h.plan.seen >= h.plan.react) jump(p);
+}
+function endRace() {
+  over = true; bannerT = BANNER; let dnf = false;
+  P.forEach(p => { if (p.fin < 0) { p.dnf = true; p.v = 0; p.jt = -1; p.y = 0; p.stun = 0; dnf = true; } });
+  if (dnf) sfx.lose();
+}
+
+function drawTrees(ctx, top) { // park behind the platform, drifting one way = the original's slow orbiting camera
+  ctx.save(); ctx.globalAlpha = 0.35;
+  for (let k = 0; k < 9; k++) {
+    const x = ((k * 123 + top * 0.7 - camX) % (g.W + 120) + g.W + 120) % (g.W + 120) - 60, r = 14 + (k % 3) * 4;
+    rr(ctx, x - 3, top + 46, 6, 18, 2, '#8B5E34'); ctx.fillStyle = k % 2 ? '#5CB85C' : '#3F9E5A'; ctx.beginPath(); ctx.arc(x, top + 42, r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 0.5; rr(ctx, 0, top + 54, g.W, 3, 1, '#B07A55');
+  for (let x = ((-camX * 1.3) % 48 + 48) % 48; x < g.W; x += 48) rr(ctx, x, top + 48, 4, 12, 1, '#B07A55');
+  ctx.restore();
+}
+function drawHurdle(ctx, x, ft, h, color) { // checkered board in the lane's player colour; rises over 0.25 s, folds flat when hit
+  const k = clamp((raceT - h.pop) / 0.25, 0, 1), w = h.hit ? 36 : 26, hh = h.hit ? 5 : Math.max(1, (HURDLE_H * PXM + 4) * k);
+  ctx.save(); ctx.translate(x, ft);
+  if (h.hit) { rr(ctx, -w / 2, -hh, w, hh, 2, color); rr(ctx, -w / 2, -hh, w, 2, 1, palette.white); }
+  else for (let r = 0; r < 3; r++) for (let c = 0; c < 2; c++) { ctx.fillStyle = (r + c) % 2 ? palette.white : color; ctx.fillRect(-w / 2 + c * 13, -hh + r * hh / 3, 13, hh / 3); }
+  ctx.strokeStyle = palette.ink; ctx.lineWidth = 2; ctx.strokeRect(-w / 2, -hh, w, hh); ctx.restore();
+}
+function drawLane(ctx, p) {
+  const top = laneTop(p.i), bt = top + 66, bb = top + 114, ft = feetY(p.i), wx = d => RUN_X + (d - p.dist) * PXM;
+  ctx.fillStyle = p.human ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.32)'; ctx.fillRect(0, top, g.W, LANE_H);
+  drawTrees(ctx, top);
+  // belt: surface sections, 1 m ticks, 5 m white lines + painted numbers, GOAL print, yellow finish line — all scroll with the runner
+  ctx.save(); ctx.beginPath(); ctx.rect(0, bt, g.W, bb - bt); ctx.clip();
+  for (const [a, b, c] of SEG) { ctx.fillStyle = c; ctx.fillRect(wx(a), bt, (b - a) * PXM, bb - bt); }
+  const m0 = Math.floor(p.dist - RUN_X / PXM), m1 = Math.ceil(p.dist + (g.W - RUN_X) / PXM);
+  for (let m = m0; m <= m1; m++) {
+    const x = wx(m);
+    if (m % 5 || m <= 0 || m >= TRACK) { ctx.fillStyle = 'rgba(58,36,48,.12)'; ctx.fillRect(x, bt, 2, bb - bt); continue; }
+    ctx.fillStyle = palette.white; ctx.fillRect(x - 1, bt, 3, bb - bt); text(ctx, String(m), x + 6, bt + 18, 14, palette.white, 'left');
+  }
+  for (let d = 45.6; d < 49.6; d += 1.1) text(ctx, 'GOAL', wx(d), bb - 8, 12, palette.red, 'left');
+  rr(ctx, wx(TRACK) - 3, bt, 6, bb - bt, 0, palette.gold);
+  ctx.restore();
+  rr(ctx, 0, bt - 4, g.W, 5, 2, '#4A3F4A'); rr(ctx, 0, bb - 1, g.W, 8, 3, '#4A3F4A'); // rollers
+  for (const h of p.hs) { const x = wx(h.d); if (h.pop >= 0 && x > -30 && x < g.W + 30) drawHurdle(ctx, x, ft, h, p.color); }
+  // runner: idle / run / jump / hit → dizzy / 1st finisher hovers (fly) / others sit (idle) / DNF sleeps / winner hops during the banner
+  const done = p.fin >= 0, hop = done && over && p.i === winner ? Math.abs(Math.sin(g.time * 8)) * 26 : done && p.rank === 1 ? 10 + Math.sin(g.time * 5) * 5 : 0;
+  const hitK = clamp((STUN - p.stun) / 0.4, 0, 1);
+  const pose = p.dnf ? 'sleep' : done ? (over && p.i === winner ? 'jump' : p.rank === 1 ? 'fly' : 'idle') : p.stun > STUN - 0.4 ? 'hit' : p.stun > 0 ? 'dizzy' : p.jt >= 0 ? 'jump' : p.v > 0.3 ? 'run' : 'idle';
+  const by = ft - 34 * SCALE - p.y * PXM - hop;
+  drawFlamingo(ctx, RUN_X + (pose === 'hit' ? hitK * 10 : 0), by, SCALE, pose, p.anim, p.color, { rot: pose === 'hit' ? hitK * 1.3 : 0 });
+  if (pose === 'dizzy') for (let k = 0; k < 3; k++) { const a = g.time * 6 + k * 2.1; text(ctx, '★', RUN_X + 18 + Math.cos(a) * 18, by - 40 + Math.sin(a) * 6, 13, palette.gold); }
+  if (done) { // small white flag with the finishing rank, planted at the lane end
+    const k = clamp((g.time - p.finAt) / 0.3, 0, 1), fx = RUN_X + 48, fy = ft - 44 * k;
+    rr(ctx, fx - 1, fy, 3, ft - fy, 1, palette.white); rr(ctx, fx, fy, 26, 19 * k, 3, palette.white);
+    if (k > 0.6) text(ctx, String(p.rank), fx + 13, fy + 15, 14, palette.ink);
+  }
+  // per-lane status: tag left, distance / rank / DNF right
+  drawPlayerTag(ctx, 48, top + 20, p.i);
+  rr(ctx, g.W - 172, top + 6, 160, 30, 9, 'rgba(255,255,255,.75)');
+  const status = p.dnf ? '시간 초과' : done ? `${p.rank}위 · ${p.fin.toFixed(2)}초` : `${Math.floor(p.dist)} m`;
+  text(ctx, status, g.W - 20, top + 28, done || p.dnf ? 18 : 22, p.dnf ? palette.red : palette.ink, 'right');
+  if (!p.dnf && !done) text(ctx, `${p.v.toFixed(1)} m/s`, g.W - 20, top + 54, 13, '#7A6272', 'right', 'normal');
+  if (p.human && !over && !done && p.stun <= 0) { // beginner hints: mash to start moving, ↑ over the very first board
+    const h = p.hs[0], jh = h && p.jumps === 0 && h.pop >= 0 && !h.hit && !h.passed; // one hint at a time
+    if (!jh && p.v < 0.3 && raceT > 0.6) text(ctx, 'A 버튼 연타!', RUN_X + 98, ft - 48 + Math.sin(g.time * 8) * 3, 15, palette.pinkDark);
+    if (jh) text(ctx, '↑ 점프!', wx(h.d), ft - 34 - Math.abs(Math.sin(g.time * 6)) * 6, 15, palette.pinkDark);
+  }
+}
+function drawTop(ctx) { // small translucent minimap (not in the original; the contract wants live status for everyone)
+  rr(ctx, 0, 0, g.W, 44, 0, 'rgba(58,36,48,.28)');
+  text(ctx, `${raceT.toFixed(1)}초`, 16, 29, 20, palette.white, 'left');
+  const x0 = 250, x1 = 660;
+  rr(ctx, x0, 20, x1 - x0, 4, 2, 'rgba(255,255,255,.6)'); rr(ctx, x1 - 2, 6, 4, 32, 2, palette.gold);
+  text(ctx, '골인', x1 + 100, 27, 13, 'rgba(255,255,255,.7)', 'left');
+  P.forEach(p => { // running: dot on the track (staggered by lane); finished: lined up past the bar in rank order
+    const done = p.fin >= 0, x = done ? x1 + 22 + (p.rank - 1) * 20 : lerp(x0, x1, clamp(p.dist / TRACK, 0, 1)), y = done ? 22 : 16 + p.i * 4;
+    ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x, y, done ? 8 : 5, 0, 7); ctx.fill();
+    if (done) text(ctx, String(p.rank), x, y + 4, 11, p.i === 2 ? palette.ink : palette.white);
+  });
+  if (winner >= 0 && !over) text(ctx, `남은 시간 ${Math.max(0, limitT).toFixed(1)}`, g.W - 16, 29, 20, palette.red, 'right');
+}
+function drawBanner(ctx) { // "1P WINS" of the original: colour badge + gold 승리!, winner hops in its lane meanwhile
+  const w = P[winner], k = clamp((BANNER - bannerT) / 0.3, 0, 1), cx = g.W / 2, cy = g.H / 2;
+  ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * -30);
+  rr(ctx, cx - 240, cy - 64, 480, 128, 26, 'rgba(58,36,48,.78)');
+  if (!w) { text(ctx, '완주자 없음', cx, cy + 16, 48, palette.gold); ctx.restore(); return; }
+  ctx.fillStyle = w.color; ctx.beginPath(); ctx.arc(cx - 140, cy, 46, 0, 7); ctx.fill();
+  text(ctx, w.name, cx - 140, cy + (w.human ? 10 : 2), w.human ? 28 : 24, w.i === 2 ? palette.ink : palette.white);
+  if (!w.human) text(ctx, 'CPU', cx - 140, cy + 24, 14, w.i === 2 ? palette.ink : palette.white);
+  ctx.font = 'bold 64px sans-serif'; ctx.textAlign = 'left'; ctx.lineWidth = 8; ctx.strokeStyle = palette.pinkDark; ctx.fillStyle = palette.gold;
+  ctx.strokeText('승리!', cx - 70, cy + 24); ctx.fillText('승리!', cx - 70, cy + 24);
+  ctx.restore();
+}
+
+
+function drawScorePanel(ctx, p, value, detail, progress) {
+  const x = 16 + p.i * 235;
+  rr(ctx, x, 51, 223, 67, 12, 'rgba(25,51,62,.92)');
+  rr(ctx, x, 51, 5, 67, 2, p.color);
+  drawPlayerTag(ctx, x + 48, 72, p.i);
+  text(ctx, value, x + 207, 81, 24, '#FFF6EA', 'right');
+  text(ctx, detail, x + 16, 104, 12, '#D2E8E3', 'left', 'normal');
+  if (progress != null) { rr(ctx, x + 118, 98, 87, 5, 2, '#526D77'); rr(ctx, x + 118, 98, Math.max(0, Math.min(1, progress)) * 87, 5, 2, p.color); }
+}
+function drawCaption3D(ctx, message) {
+  rr(ctx, 200, 490, 560, 32, 16, 'rgba(25,51,62,.88)');
+  text(ctx, message, 480, 511, 16, '#FFF6EA');
+}
+
+function drawStadium3D(ctx) {
+  if (!stadiumView.draw(ctx, { time: g.time, players: P, raceTime: raceT, ended: g.state() === 'end', winner, over })) return false;
+  P.forEach(p => drawScorePanel(ctx, p, p.dnf ? '미완주' : p.fin >= 0 ? `${p.rank}위` : `${Math.floor(p.dist)} m`, p.dnf ? '다음 경기에 도전!' : p.fin >= 0 ? `${p.fin.toFixed(2)}초 완주` : p.stun > 0 ? '다시 일어나는 중' : `${p.v.toFixed(1)} m/s`, p.dist / TRACK));
+  stadiumView.labels(ctx, P);
+  drawTop(ctx);
+  if (over && bannerT > 0) drawBanner(ctx);
+  else if (g.state() === 'play') drawCaption3D(ctx, 'A 연타로 달리기  ·  ↑ 또는 B로 허들 점프  ·  50 m 먼저 골인!');
+  return true;
+}
+
+g = Game({ id: 'run', title: '달려라 플라밍고',
+  howto: ['A 버튼 연타 = 달리기 · ↑ = 허들 점프', '허들에 부딪히면 넘어져서 크게 손해!', '50 m 결승선에 가장 먼저 골인하면 승리'], duration: 0,
+  init() {
+    const order = g.humans >= 2 ? ['hard', 'hardm', 'normal'] : ['normal', 'hardm', 'hard']; let c = 0;
+    P = g.slots().map(s => mk(s, s.human ? null : DIFF[order[c++]]));
+    raceT = 0; limitT = -1; bannerT = -1; winner = -1; over = false; parts = []; camX = 0;
+  },
+  update(dt) {
+    for (const q of parts) { q.vy += 600 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0);
+    if (over) { bannerT -= dt; if (bannerT <= 0) g.finish(); return; } // banner: inputs ignored, then the shell's ranking screen
+    raceT += dt; camX += 12 * dt;
+    P.forEach((p, i) => {
+      if (p.human) { const k = g.p(i); if (k.hit('a') && raceT - p.lastTap >= 0.04) { p.lastTap = raceT; tap(p); } if (k.hit('up') || k.hit('b')) jump(p); }
+      else cpu(p);
+      step(p, dt);
+    });
+    P.filter(p => p.fin >= 0).sort((a, b) => a.fin - b.fin || a.i - b.i).forEach((p, k) => { p.rank = k + 1; }); // rank by interpolated time, lower slot first on a tie
+    const r1 = P.find(p => p.rank === 1); if (r1) winner = r1.i;
+    if (winner >= 0) limitT -= dt;
+    if (P.every(p => p.fin >= 0) || (winner >= 0 && limitT <= 0) || raceT > SAFETY) endRace();
+  },
+  draw(ctx) {
+    if (drawStadium3D(ctx)) return;
+    bg(ctx, g.W, g.H, '#9ED9FF', '#E8F7FF');
+    const cz = Math.min(1.03, 1 + raceT * 0.0015); // slow orbit-camera hint: tiny tilt + gradual zoom
+    ctx.save(); ctx.translate(g.W / 2, g.H / 2); ctx.rotate(0.012 * Math.sin(raceT * 0.13)); ctx.scale(cz, cz); ctx.translate(-g.W / 2, -g.H / 2);
+    P.forEach(p => drawLane(ctx, p));
+    for (const q of parts) { ctx.globalAlpha = clamp(q.life * 2.5, 0, 1); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, 3.5, 0, 7); ctx.fill(); } ctx.globalAlpha = 1; ctx.restore();
+    drawTop(ctx);
+    if (over && bannerT > 0) drawBanner(ctx);
+  },
+  result() { // finishers: race time in seconds (lower is better); DNF: 999 + metres left, so they rank behind every finisher
+    const w = P[winner], fin = w && w.fin >= 0;
+    return { scores: P.map(p => p.fin >= 0 ? +p.fin.toFixed(3) : +(999 + TRACK - p.dist).toFixed(1)), lowerIsBetter: true,
+      text: (fin ? `1위 ${w.name}${w.human ? '' : ' CPU'} ${w.fin.toFixed(2)}초` : '완주자 없음') + ' · 점수 = 기록(초), 미완주 = 999 + 남은 m' };
+  } });
+</script></body></html>

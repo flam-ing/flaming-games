@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>잽싼 밍고 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: 뚜껑이 열리는 순간 A 버튼 · B 버튼은 페이크 (닫힌 뚜껑에 A 버튼 = 플라잉)</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, bg, text, rr, rand, clamp, lerp, slots } = STADIUM;
+// 원작 Eager Eevee (specs/eevee.md): 4마리가 뚜껑 둘레를 돌다가 음악이 멈추고 에이팜이 뚜껑을 열면 A! 제일 빠른 밍고가 과일을 먹는다.
+// 딸기 100×개수(1등 60%·2등 나머지) · 포도 500 · 멜론 1000 · 피콘은 펑 → 다음 라운드 휴식(5라운드면 -500). 닫힌 뚜껑에 A = 플라잉(스턴 2.0s). B = 페이크 대시. 5라운드 합계 최다 승리.
+const TAU = Math.PI * 2, CX = 480, CY = 320, RX = 250, RY = 120; // 트랙 타원 (§6)
+const LX = 480, LY = 300, LIFT = 70, EX = 120, EY = 55; // 뚜껑 중심 · 들리는 높이 · 돌진 지점(뚜껑 가장자리) 반경
+const ROUNDS = 5, STUN = 2.0, WIN = 1.2, GRACE = .35, DASH = .25, LIMIT = 90, AIPOM = '#9b6bd6', REST = { x: 90, y: 430 };
+const PROB = [[.5, .35, .15, 0], [.4, .35, .2, .05], [.3, .3, .25, .15], [.2, .25, .2, .35], [0, .25, .65, .1]]; // 라운드별 딸기/포도/멜론/피콘 확률 (§4)
+const CIRC = [4, 5, 6, 6, 6], FAKES = [[0, 0], [0, 1], [1, 1], [1, 2], [1, 2]]; // 돌기 상한(초, 하한 2.5) · 에이팜 페이크 횟수 범위 (§5)
+const KIND = ['berry', 'grape', 'melon', 'pineco'], VAL = { grape: 500, melon: 1000 };
+// COM 모델 (§8 Normal/Hard): r 반응[평균,σ]초 · fooled 에이팜 페이크에 낚임 · bite 피콘 그냥 묾 · fs 자발적 플라잉/초 · bf B페이크/초 · follow 열림 중 남의 돌진 따라감 · bfp 피콘 확인 후 B페이크(§11.5)
+const AI = { normal: { r: [.36, .09], fooled: .3, bite: .6, fs: .02, bf: .2, follow: .35, bfp: .25 }, hard: { r: [.27, .06], fooled: .15, bite: .3, fs: .01, bf: .3, follow: .2, bfp: .5 } };
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(TAU * Math.random());
+const react = p => Math.max(.06, gauss(AI[p.lv].r[0], AI[p.lv].r[1]));
+const fmt = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const pick = pr => { let r = Math.random(), k = 0; while (k < 3 && (r -= pr[k]) > 0) k++; return k; };
+const slotPos = i => { const a = base + i * Math.PI / 2; return { x: CX + RX * Math.cos(a), y: CY + RY * Math.sin(a), a }; }; // 트랙 위 자기 자리 = base + i·90°
+const edgeOf = p => { const a = Math.atan2((p.y - LY) / EY, (p.x - LX) / EX); return { x: LX + EX * Math.cos(a), y: LY + EY * Math.sin(a) }; }; // 자기 방향의 뚜껑 가장자리
+let g, P, ph, round, base, fruit, lift, now, beat, noteT, fake, fakes, qT, arr, closed, caption, pops, parts, flash, shake, boom;
+
+function say(s, life, c) { caption = { s, life, c: c || palette.cream }; }
+function pop(x, y, s, c) { pops.push({ x, y, s, c, life: 1 }); }
+function burst(x, y, n, c) { for (let k = 0; k < n; k++) parts.push({ x, y, vx: rand(-260, 260), vy: rand(-320, -60), life: rand(.4, .7), c }); }
+function goBack(p) { p.st = 'back'; p.t = 0; p.fx = p.x; p.fy = p.y; }
+
+function setPhase(n, dur) { ph = { n, t: 0, dur };
+  if (n === 'intro') newRound();
+  else if (n === 'circle') { // 메트로놈 시작 + 에이팜 페이크 예약: 시작 0.6s 뒤부터 진짜 열기 0.8s 전까지, 서로 0.6s 이상 간격 (§5)
+    beat = 0; fakes = []; const [lo, hi] = FAKES[round - 1]; let left = lo + (Math.random() * (hi - lo + 1) | 0), from = .6;
+    while (left-- > 0 && from < dur - 1.05) { const f = rand(from, dur - 1.05); fakes.push(f); from = f + .6; } fakes.sort((a, b) => b - a);
+    if (round === 1) { say('음악이 멈추는 순간을 노리세요!', 1.5); sfx.tap(); setTimeout(() => sfx.tap(), 160); } // 에이팜이 뚜껑을 두 번 두드림 (§7)
+  } else if (n === 'open') { sfx.beep(1400, .1, 'square', .12); for (const p of P) if (!p.human && p.st === 'run') aiOpen(p); }
+  else if (n === 'settle') { sfx.tick(); for (const p of P) if (/eat|wait|boom|dash/.test(p.st)) goBack(p); }
+  else if (n === 'over') { const max = Math.max(...P.map(p => p.score)); say(`승자는 ${P.filter(p => p.score === max).map(p => p.name).join('·')}!`, 2); for (const p of P) if (/eat|wait|boom|rest/.test(p.st)) goBack(p); }
+}
+function newRound() { // 과일 뽑기(딸기 6~10개), 휴식자 배치, 라운드 플래그 초기화. 스턴은 그대로 이어진다 (§2)
+  round++; arr = []; closed = false; fake = -1; fakes = []; fruit = { kind: KIND[pick(PROB[round - 1])], n: 6 + (Math.random() * 5 | 0), pop: 0, gone: false };
+  for (const p of P) { Object.assign(p, { dashed: false, rank: 0, gain: 0, applied: false, arrived: false, check: false, followed: false, burnt: false, planA: -1, planB: -1, boomT: 0 });
+    if (p.restNext) { p.st = 'rest'; p.t = 0; } else if (p.st === 'rest') goBack(p); else if (p.st !== 'stun') { p.st = 'run'; p.t = 0; } p.restNext = false; }
+  say(round === ROUNDS ? '마지막 라운드! 가장 큰 점수가 걸려 있습니다!' : `라운드 ${round} / ${ROUNDS}`, 1.2);
+}
+function pressA(p) { // 상태별 입력표 (§11.1): circle·silence = 플라잉, open = 돌진(라운드당 첫 1회), 그 외 무시. 스턴·휴식·복귀 중 무시. 홀드는 무효(hit만 본다)
+  if (p.st !== 'run' || p.dashed) return;
+  const e = edgeOf(p);
+  if (ph.n === 'circle' || ph.n === 'silence') { Object.assign(p, { st: 'stun', t: 0, fx: p.x, fy: p.y, tx: e.x, ty: e.y }); sfx.bad(); say(p.human ? '앗, 너무 빨랐어요! 플라잉!' : `${p.name} 플라잉!`, .8, p.color); return; }
+  if (ph.n === 'open' && ph.t === 0) return; // 뚜껑이 아직 닫혀 그려진 프레임의 입력은 무시 (선입력 방지)
+  if ((ph.n === 'open' || ph.n === 'resolve') && closed) { Object.assign(p, { dashed: true, st: 'dash', t: 0, rank: 3, fx: p.x, fy: p.y, tx: e.x, ty: e.y }); sfx.tap(); pop(p.x, p.y - 70, '늦었다!', p.color); return; } // 늦은 A: 점수 없는 돌진 → 가장자리 idle (§7·11.4)
+  if (ph.n !== 'open' || closed) return;
+  const f = arr.filter(a => a.rank === 1), s = arr.find(a => a.rank === 2); let rank = 3; // 같은 프레임(같은 ph.t) = 동시 도착 (§11.7)
+  if (!f.length || f[0].t === ph.t) rank = 1; else if (fruit.kind === 'berry' && f.length === 1 && ph.t - f[0].t <= GRACE && (!s || s.t === ph.t)) rank = 2;
+  const k = rank <= 2 ? .3 : 0; // 1·2등만 접시까지 더 들어간다 (§11.4)
+  Object.assign(p, { dashed: true, st: 'dash', t: 0, rank, fx: p.x, fy: p.y, tx: lerp(e.x, LX, k), ty: lerp(e.y, LY, k) });
+  arr.push({ i: p.i, t: ph.t, rank }); sfx.beep(p.human ? 900 : 720, .06, 'square', .06); seen(p);
+}
+function pressB(p) { if (p.st !== 'run' || p.fakeCd > 0 || !/circle|silence|open/.test(ph.n)) return; p.fakeT = .3; p.fakeCd = .5; sfx.tap(); seen(p); }
+function seen(p) { // 열림 중 남의 돌진·B페이크를 본 COM은 p_follow로 따라간다 — 피콘 심리전 (§8). 라운드당 한 번만 판단. 돌기 중에는 에이팜 페이크에만 낚인다
+  if (ph.n !== 'open') return;
+  for (const q of P) if (!q.human && q !== p && q.st === 'run' && !q.dashed && q.planA < 0 && !q.followed) { q.followed = true; if (Math.random() < AI[q.lv].follow) q.planA = now + react(q); }
+}
+function aiOpen(p) { const a = AI[p.lv]; if (fruit.kind === 'pineco' && Math.random() >= a.bite) { p.check = true; if (Math.random() < a.bfp) p.planB = now + react(p); } else p.planA = now + react(p); }
+function closeWindow() { // 창 닫기 (§11.8): 도착 순위별 몫 확정. 딸기 1등 ceil(N×0.6)·2등 나머지, 동시 1등은 몫을 올림 나눔. 포도·멜론 1등 독식, 피콘은 1등 전원 폭발
+  closed = true; const f = arr.filter(a => a.rank === 1), s = arr.filter(a => a.rank === 2), k = fruit.kind, top = Math.ceil(fruit.n * .6);
+  if (!f.length) { say('아무도 못 먹었다…', 1); setPhase('resolve', .8); return; }
+  for (const a of arr) P[a.i].gain = k === 'pineco' ? (a.rank === 1 ? -1 : 0) : k === 'berry' ? 100 * (a.rank === 1 ? (f.length > 1 ? Math.ceil(fruit.n / f.length) : top) : a.rank === 2 ? Math.ceil((fruit.n - top) / s.length) : 0) : a.rank === 1 ? VAL[k] : 0;
+  if (f.length > 1) say('동시!', 1);
+  setPhase('resolve', k === 'pineco' ? 2.4 : 1.6);
+}
+function award(p) { p.applied = true;
+  if (p.gain > 0) { p.score += p.gain; p.popT = 1; pop(p.x + (p.x - LX) * .4, p.y - 90, '+' + p.gain, p.rank === 1 ? palette.gold : palette.white); p.rank === 1 ? sfx.good() : sfx.tap(); if (fruit.kind === 'melon') say('멜론이다! 1000점!', 1); }
+  else if (p.gain < 0) p.boomT = .2; // 피콘: 문 뒤 0.2s 뒤 폭발 (§7)
+}
+function explode(p) { // 흰→주황 플래시 + 화면 흔들림 + 파티클 12개 + sfx.hit. 문 플레이어는 그을려 다음 라운드 휴식, 5라운드면 -500(최저 0). 나머지 도착자는 놀라 뒤로 점프
+  flash = .1; shake = .3; boom = .3; burst(LX, LY - 10, 12, '#ff8c42'); sfx.hit(); fruit.gone = true; p.st = 'boom'; p.t = 0; p.burnt = true;
+  if (round < ROUNDS) { p.restNext = true; say(`펑! 피콘이었습니다… ${p.name}는 다음 라운드 휴식`, 1.4, p.color); }
+  else { p.score = Math.max(0, p.score - 500); p.popT = 1; pop(p.x + (p.x - LX) * .4, p.y - 90, '-500', palette.red); say('펑! 마지막 라운드라 -500점', 1.4, p.color); }
+  for (const q of P) if (q !== p && q.arrived && q.st !== 'boom') q.fakeT = .3;
+}
+function stepPlayer(p, dt) {
+  const sp = slotPos(p.i); p.t += dt; p.fakeT -= dt; p.fakeCd -= dt; p.popT = (p.popT || 0) - dt;
+  if (p.st === 'run') { p.x = sp.x; p.y = sp.y; }
+  else if (p.st === 'rest') { const k = Math.min(1, dt * 5); const rx = REST.x + P.filter(q => q.st === 'rest' && q.i < p.i).length * 60; p.x = lerp(p.x, rx, k); p.y = lerp(p.y, REST.y, k); }
+  else if (p.st === 'dash') { const k = Math.min(1, p.t / DASH); p.x = lerp(p.fx, p.tx, k); p.y = lerp(p.fy, p.ty, k); if (k >= 1) { p.arrived = true; p.st = p.rank <= 2 ? 'eat' : 'wait'; p.t = 0; } }
+  else if (p.st === 'eat') { if (p.t >= .8) { p.st = 'wait'; if (p.gain > 0) fruit.gone = true; } }
+  else if (p.st === 'stun') { // 플라잉: 가장자리까지 fly(0.25) → hit로 자기 자리로 튕김(0.3) → dizzy로 원의 회전에 실려감 (§11.3). 합계 2.0s
+    if (p.t < DASH) { const k = p.t / DASH; p.x = lerp(p.fx, p.tx, k); p.y = lerp(p.fy, p.ty, k); }
+    else if (p.t < DASH + .3) { const k = (p.t - DASH) / .3, d = Math.hypot(sp.x - CX, sp.y - CY) || 1, ox = sp.x + (sp.x - CX) / d * 40, oy = sp.y + (sp.y - CY) / d * 40; // 가장자리 → 자리 바깥 40px로 튕김 → 자리 (§11.3)
+      if (k < .6) { p.x = lerp(p.tx, ox, k / .6); p.y = lerp(p.ty, oy, k / .6); } else { p.x = lerp(ox, sp.x, (k - .6) / .4); p.y = lerp(oy, sp.y, (k - .6) / .4); } } else { p.x = sp.x; p.y = sp.y; }
+    if (p.t >= STUN) { p.st = 'run'; if (!p.human && ph.n === 'open' && !closed) aiOpen(p); } // 열림 중 풀리면 늦게라도 돌진 (§11.1)
+  } else if (p.st === 'back') { const k = Math.min(1, p.t / .4); p.x = lerp(p.fx, sp.x, k); p.y = lerp(p.fy, sp.y, k); if (k >= 1) p.st = 'run'; }
+  else if (p.st === 'boom' && p.t >= 1.2) p.st = 'wait';
+  if (p.boomT > 0 && (p.boomT -= dt) <= 0) explode(p);
+  if (p.arrived && closed && !p.applied) award(p);
+}
+
+g = Game({ id: 'eevee', title: '잽싼 밍고', howto: ['음악이 멈추고 뚜껑이 열리면 A 버튼! 가장 빠른 밍고가 과일을 먹어요', '닫힌 뚜껑에 A 버튼은 플라잉(2초 기절) · B 버튼은 페이크로 상대 낚기', '피콘(솔방울)을 물면 펑! 다음 라운드 휴식 · 5라운드 합계로 승부'], duration: 0,
+  init() {
+    // 항상 4마리. 사람이면 입력, 아니면 COM — 사람 1명이면 2P COM = Hard, 사람 2명 이상이면 COM 전원 Normal (§8)
+    P = slots().map((s, i) => ({ ...s, score: 0, lv: g.humans === 1 && i === 1 ? 'hard' : 'normal', st: 'run', t: 0, x: 0, y: 0, fx: 0, fy: 0, tx: 0, ty: 0, fakeT: 0, fakeCd: 0, restNext: false, planA: -1, planB: -1 }));
+    round = 0; base = -Math.PI / 2; now = 0; lift = 0; beat = 0; noteT = 0; qT = 0; fake = -1; fakes = []; caption = null; pops = []; parts = []; flash = shake = boom = 0;
+    setPhase('intro', 1); for (const p of P) { const s = slotPos(p.i); p.x = s.x; p.y = s.y; }
+  },
+  update(dt) {
+    now += dt; ph.t += dt; if (now > LIMIT) g.finish(); // 안전장치 (정상 종료는 5라운드 뒤 over 단계 ≈ 60s 이내)
+    noteT -= dt; qT -= dt; flash -= dt; shake -= dt; boom -= dt;
+    if (ph.n === 'intro') { lift = 0; if (ph.t >= ph.dur) setPhase('circle', rand(2.5, CIRC[round - 1])); }
+    else if (ph.n === 'circle') { // 60°/s 회전, 0.5s 메트로놈(120BPM). 에이팜 페이크 = lift 0→0.35→0 (0.25s), 박자는 멈추지 않는다 — COM은 p_fooled로 낚인다
+      base += Math.PI / 3 * dt; beat -= dt; if (beat <= 0) { beat += .5; sfx.beep(660, .05, 'square', .15); noteT = .15; }
+      if (fake >= 0 && (fake += dt) > .25) fake = -1;
+      if (fakes.length && ph.t >= fakes[fakes.length - 1]) { fakes.pop(); fake = 0; qT = .65; sfx.pop(); say('에이팜의 페이크! 속지 마세요!', .7); for (const p of P) if (!p.human && p.st === 'run' && Math.random() < AI[p.lv].fooled) p.planA = now + react(p); }
+      lift = fake >= 0 ? .35 * Math.sin(Math.PI * fake / .25) : 0;
+      if (ph.t >= ph.dur) setPhase('silence', .12); // 음악 정지 → 0.12s 정적 → 열림 (§11.9)
+    } else if (ph.n === 'silence') { lift = 0; if (ph.t >= ph.dur) setPhase('open', WIN); }
+    else if (ph.n === 'open') lift = fruit.pop = Math.min(1, ph.t / .15);
+    else if (ph.n === 'resolve') { lift = 1; fruit.pop = Math.min(1, fruit.pop + dt / .15); if (ph.t >= ph.dur) setPhase('settle', .8); }
+    else if (ph.n === 'settle') { lift = Math.max(0, 1 - ph.t / .3); if (ph.t >= ph.dur) round < ROUNDS ? setPhase('intro', 1) : setPhase('over', 1.5); }
+    else if (ph.n === 'over' && ph.t >= ph.dur) g.finish();
+    for (const p of P) {
+      if (p.human) { const k = g.p(p.i); if (k.hit('a')) pressA(p); if (k.hit('b')) pressB(p); }
+      else { if (p.planA >= 0 && now >= p.planA) { p.planA = -1; pressA(p); } if (p.planB >= 0 && now >= p.planB) { p.planB = -1; pressB(p); }
+        if (ph.n === 'circle' && p.st === 'run') { const a = AI[p.lv]; if (Math.random() < a.fs * dt) pressA(p); else if (Math.random() < a.bf * dt) pressB(p); } }
+      stepPlayer(p, dt);
+    }
+    if (ph.n === 'open' && !closed) { const f = arr.filter(a => a.rank === 1); if (f.length && (fruit.kind !== 'berry' || f.length > 1 || arr.length > f.length || ph.t - f[0].t >= GRACE) || ph.t >= WIN) closeWindow(); }
+    for (const q of parts) { q.vy += 700 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0);
+    for (const o of pops) { o.y -= 50 * dt; o.life -= dt; } pops = pops.filter(o => o.life > 0);
+    if (caption && (caption.life -= dt) <= 0) caption = null;
+  },
+  draw(ctx) {
+    ctx.save(); if (shake > 0) ctx.translate(rand(-6, 6) * shake / .3, rand(-4, 4) * shake / .3);
+    bg(ctx, g.W, g.H, palette.sky, '#FFE9D2');
+    for (const [x, y] of [[130, 150], [480, 128], [830, 150]]) { rr(ctx, x - 8, y, 16, 70, 4, '#8C5A3C'); ctx.fillStyle = '#5fb04a'; for (const [dx, dy, r] of [[0, -8, 38], [-30, 12, 26], [30, 12, 26]]) { ctx.beginPath(); ctx.arc(x + dx, y + dy, r, 0, TAU); ctx.fill(); } }
+    ctx.fillStyle = '#7cc257'; ctx.strokeStyle = '#5a9a3c'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(480, 330, 345, 178, 0, 0, TAU); ctx.fill(); ctx.stroke(); // 잔디 무대
+    ctx.strokeStyle = '#d9b27a'; ctx.lineWidth = 40; ctx.beginPath(); ctx.ellipse(CX, CY, RX, RY, 0, 0, TAU); ctx.stroke(); // 흙길 트랙
+    ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.beginPath(); ctx.ellipse(LX, LY + 12, 114, 42, 0, 0, TAU); ctx.fill(); // 뚜껑 그림자(바닥 고정)
+    const lk = LY + 8 - 110 * lift, items = P.map(p => ({ y: p.y, f: () => drawPlayer(ctx, p) })); // y 정렬로 앞뒤 겹침 처리. 들린 뚜껑(+위의 에이팜)은 뒤로 보내 북쪽 플레이어를 가리지 않게
+    items.push({ y: LY - 50, f: () => drawPlate(ctx) }, { y: lk, f: () => drawLid(ctx) }, { y: lk + 1, f: () => drawAipom(ctx) });
+    items.sort((a, b) => a.y - b.y).forEach(o => o.f());
+    if (boom > 0) { ctx.globalAlpha = boom / .3; ctx.fillStyle = boom > .2 ? palette.white : '#ff8c42'; ctx.beginPath(); ctx.arc(LX, LY - 10, 160 * (1.3 - boom / .3), 0, TAU); ctx.fill(); }
+    for (const q of parts) { ctx.globalAlpha = clamp(q.life * 2, 0, 1); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, 5, 0, TAU); ctx.fill(); }
+    if (g.state() !== 'end') for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 2); text(ctx, o.s, o.x, o.y, 26, palette.ink); text(ctx, o.s, o.x, o.y - 2, 26, o.c); }
+    ctx.globalAlpha = 1; drawHUD(ctx);
+    if (caption && g.state() === 'play') { ctx.globalAlpha = Math.min(1, caption.life * 2); rr(ctx, 260, 72, 440, 34, 17, 'rgba(58,36,48,.78)'); text(ctx, caption.s, 480, 96, 18, caption.c); ctx.globalAlpha = 1; }
+    if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash / .1})`; ctx.fillRect(-20, -20, g.W + 40, g.H + 40); }
+    ctx.restore();
+  },
+  result() { const max = Math.max(...P.map(p => p.score)), w = P.filter(p => p.score === max).map(p => p.name); return { scores: P.map(p => p.score), text: `5라운드 합계 · ${w.length > 1 ? '공동 승자' : '승자'} ${w.join('·')}` }; } });
+
+function drawPlayer(ctx, p) { // 포즈 (§1 표): 돌기 run(박자 동기) · 돌진 fly · 획득 eat · 플라잉 fly→hit→dizzy(별 3개) · 피콘 dizzy+그을림 · 휴식 sleep · B페이크 jump · 결과 1위 fly/꼴찌 sleep
+  const sc = 1.15 * (1 + (p.y - CY) / RY * .1), sp = slotPos(p.i), over = ph.n === 'over' || g.state() === 'end'; // 원근: 위쪽 작게, 아래쪽 크게 (§6)
+  let pose = 'idle', flip = p.x > CX, dy = 0;
+  if (p.st === 'run') { if (ph.n === 'circle') { pose = 'run'; flip = Math.sin(sp.a) > 0; } }
+  else if (p.st === 'dash' || (p.st === 'stun' && p.t < DASH)) pose = 'fly';
+  else if (p.st === 'eat') pose = 'eat';
+  else if (p.st === 'stun') pose = p.t < DASH + .3 ? 'hit' : 'dizzy';
+  else if (p.st === 'rest') pose = 'sleep';
+  else if (p.st === 'boom') pose = 'dizzy';
+  else if (p.st === 'back') { pose = 'run'; flip = p.x > sp.x; }
+  if (p.fakeT > 0 && /run|wait/.test(p.st)) { pose = 'jump'; dy = -16 * Math.sin(Math.PI * p.fakeT / .3); }
+  if (over) { const sc2 = P.map(q => q.score), max = Math.max(...sc2), min = Math.min(...sc2); pose = p.score === max ? 'fly' : p.score === min && min < max ? 'sleep' : 'idle'; if (pose === 'fly') dy = -Math.abs(Math.sin(g.time * 5)) * 30; }
+  if (pose === 'run') { ctx.fillStyle = 'rgba(120,100,80,.3)'; ctx.beginPath(); ctx.arc(p.x + (flip ? 14 : -14), p.y + 36 * sc, 4 + 3 * Math.abs(Math.sin(now * TAU * 2)), 0, TAU); ctx.fill(); } // 발밑 먼지
+  drawFlamingo(ctx, p.x, p.y + dy, sc, pose, pose === 'run' ? now * .6283 : g.time + p.i, p.color, { flip }); // run 위상 = 0.5s 박자에 동기 (§11.9)
+  if (p.burnt) { ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.beginPath(); ctx.arc(p.x, p.y + dy - 6 * sc, 22 * sc, 0, TAU); ctx.fill(); }
+  if (p.st === 'stun' && p.t >= DASH + .3) for (let k = 0; k < 3; k++) { const b = g.time * 6 + k * 2.09; text(ctx, '★', p.x + Math.cos(b) * 20, p.y - 44 * sc + Math.sin(b) * 6, 13, palette.gold); }
+  if (g.state() === 'end') return; // 결과 화면: 실루엣 포즈만, 태그·말풍선은 결과표와 겹치지 않게 숨김
+  if (p.check && (ph.n === 'resolve' || ph.n === 'open' && ph.t > .4)) text(ctx, '…', p.x + 8, p.y - 50 * sc, 22, palette.ink); // 피콘을 확인하고 안 움직이는 COM (§8)
+  if (p.human && round === 1 && ph.n === 'open' && p.st === 'run') text(ctx, '지금 A 버튼!', p.x, p.y - 82 * sc, 15, palette.pinkDark);
+  if (!(p.popT > 0)) drawPlayerTag(ctx, p.x, p.y - 62 * sc + dy, p.i); // 점수 팝이 떠 있는 동안 머리 태그는 숨김
+}
+function drawPlate(ctx) { // 접시 + 내용물: 뚜껑 뒤에서 드러난다. 딸기·포도만 팝(0.6→1), 멜론·피콘은 즉시 풀 사이즈 (§11.6). 페이크 때는 안 보인다
+  ctx.fillStyle = palette.white; ctx.strokeStyle = '#d9d3c8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(LX, LY + 6, 90, 30, 0, 0, TAU); ctx.fill(); ctx.stroke();
+  if (fruit.gone || !(ph.n === 'open' || ph.n === 'resolve' || ph.n === 'settle' && lift > .25)) return;
+  const k = fruit.kind, s = k === 'berry' || k === 'grape' ? lerp(.6, 1, fruit.pop) : 1;
+  ctx.save(); ctx.translate(LX, LY - 4); ctx.scale(s, s);
+  if (k === 'berry') for (let j = 0; j < fruit.n; j++) { const x = (j % 5 - 2) * 26 + (j > 4 ? 13 : 0), y = j > 4 ? 12 : -8; ctx.fillStyle = palette.red; ctx.beginPath(); ctx.arc(x, y, 12, 0, TAU); ctx.fill(); ctx.fillStyle = '#3f9a3a'; ctx.beginPath(); ctx.moveTo(x - 7, y - 9); ctx.lineTo(x + 7, y - 9); ctx.lineTo(x, y - 17); ctx.fill(); }
+  else if (k === 'grape') { ctx.fillStyle = '#8a4fd6'; for (const [x, y] of [[-27, -18], [-9, -18], [9, -18], [27, -18], [-18, -2], [0, -2], [18, -2], [-9, 14], [9, 14], [0, 28]]) { ctx.beginPath(); ctx.arc(x, y, 10, 0, TAU); ctx.fill(); } }
+  else if (k === 'melon') { ctx.fillStyle = '#3fae4a'; ctx.beginPath(); ctx.arc(0, -8, 42, 0, TAU); ctx.fill(); ctx.strokeStyle = '#237a2c'; ctx.lineWidth = 4; for (const r of [4, 20, 34]) { ctx.beginPath(); ctx.ellipse(0, -8, r, 42, 0, 0, TAU); ctx.stroke(); } }
+  else { ctx.fillStyle = '#7d8fa3'; for (let j = 0; j < 6; j++) { const a = j * Math.PI / 3 + Math.PI / 6; ctx.beginPath(); ctx.moveTo(Math.cos(a - .4) * 26, -8 + Math.sin(a - .4) * 26); ctx.lineTo(Math.cos(a) * 40, -8 + Math.sin(a) * 40); ctx.lineTo(Math.cos(a + .4) * 26, -8 + Math.sin(a + .4) * 26); ctx.fill(); } ctx.beginPath(); ctx.arc(0, -8, 30, 0, TAU); ctx.fill(); ctx.fillStyle = palette.ink; for (const x of [-11, 11]) { ctx.beginPath(); ctx.arc(x, -12, 4, 0, TAU); ctx.fill(); } }
+  ctx.restore();
+}
+function drawLid(ctx) { // 나무 뚜껑: lift에 따라 위로 떠오르며 뒤로 젖혀진다(ry 축소). 페이크는 lift 0.35까지만
+  const y = LY - LIFT * lift, ry = 46 * (1 - .5 * lift);
+  ctx.fillStyle = '#b97a3c'; ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(LX, y, 110, ry, 0, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(122,74,30,.5)'; ctx.lineWidth = 2; for (const k of [.55, .8]) { ctx.beginPath(); ctx.ellipse(LX, y, 110 * k, ry * k, 0, 0, TAU); ctx.stroke(); }
+  rr(ctx, LX - 22, y - ry * .35 - 8, 44, 14, 7, '#7a4a1e');
+}
+function drawAipom(ctx) { // 에이팜 = 뚜껑 위에 선 보라 큰 플라밍고(플레이어 색 아님). 뚜껑과 같이 뛰어오르고, 페이크 뒤 0.4s "?" 말풍선
+  const y = LY - 12 - LIFT * lift; drawFlamingo(ctx, LX, y, 1.3, lift > .05 ? 'jump' : 'idle', g.time, AIPOM);
+  if (qT > 0) { ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(LX + 36, y - 72, 15, 0, TAU); ctx.fill(); text(ctx, '?', LX + 36, y - 65, 20, AIPOM); }
+}
+function drawHUD(ctx) { // 네 귀퉁이 패널 200×48 (§11.10): 색 띠 + 배지 + 점수(콤마) · ★ 선두 · 휴식 오버레이 · 스턴 별 3개. 상단 중앙 라운드 + 음표
+  const max = Math.max(...P.map(p => p.score));
+  P.forEach((p, i) => { const x = i % 2 ? 744 : 16, y = i < 2 ? 12 : 480;
+    rr(ctx, x, y, 200, 48, 10, 'rgba(255,255,255,.88)'); rr(ctx, x, y, 12, 48, 5, p.color); drawPlayerTag(ctx, x + 54, y + 24, i);
+    text(ctx, fmt(p.score), x + 190, y + 33, 24, palette.ink, 'right');
+    if (p.st === 'rest') { rr(ctx, x, y, 200, 48, 10, 'rgba(90,90,90,.6)'); text(ctx, '휴식', x + 100, y + 32, 20, palette.white); }
+    else if (p.st === 'stun') text(ctx, '★★★', x + 90, y + 31, 15, palette.red, 'left');
+    else if (max > 0 && p.score === max) text(ctx, '★', x + 94, y + 31, 15, palette.gold, 'left');
+  });
+  text(ctx, `라운드 ${round} / ${ROUNDS}`, 480, 46, 26, palette.ink);
+  if (ph.n === 'circle') text(ctx, '♪', 592, 50, 30, noteT > 0 ? palette.pinkDark : 'rgba(226,85,140,.35)');
+}
+</script></body></html>

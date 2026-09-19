@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>초밥 뷔페 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ←→↑↓ 이동 · A 버튼으로 부리 뻗기</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, bg, text, rr, rand, slots } = STADIUM;
+let g;
+// ---- 스펙 상수 (specs/sushi.md §3–§8) ----
+const CX = 480, CY = 290, RX = 365, RY = 185;   // 레일 중앙선 타원 (바깥 400/215 · 안쪽 330/155)
+const FX = 308, FY = 133, BODY = 22;            // 안쪽 바닥 타원 (몸 반지름 22 제외)
+const SLOTS = 12, LAP = 20, REFILL = 4.5, WASABI = 0.25;
+const REACH = 150, T_OUT = 0.18, T_HOLD = 0.06, T_BACK = 0.18, SPEED = 170, BZ_SPEED = 260, BZ_R = 40, BZ_T = 2.0;
+const SUSHI = [
+  { n: '차', v: 20, p: 12 }, { n: '오이말이', v: 50, p: 20 }, { n: '계란', v: 150, p: 18 }, { n: '참치말이', v: 200, p: 16 }, { n: '연어알', v: 250, p: 13 },
+  { n: '새우', v: 350, p: 10, shout: '새우 하나!' }, { n: '뱃살', v: 600, p: 7, shout: '뱃살 하나!' }, { n: '성게', v: 1000, p: 4, shout: '성게 하나!' }];
+// CPU 모델 (§8): 재평가 주기 · 스폰 인지 지연 · 조준 오차 · 헛스윙 · 차 회피 · 비합리 선택 · 콤보 선호 상한 · 밀치기 · 스폰 예지(초)
+const DIFF = { normal: { re: 0.6, see: 0.6, err: 36, miss: 0.32, tea: 0.8, irr: 0.35, combo: 1, push: 0, fore: 0 },
+  hard: { re: 0.2, see: 0, err: 10, miss: 0.05, tea: 1, irr: 0.15, combo: 5, push: 0.1, fore: 0.5 } };
+const CPU_DIFF = 'normal'; // §5: CPU 전원 공통 난이도(슬롯별 혼합 없음) — 튜닝용 'hard'
+const START = [[480, 405, 0, 1], [690, 290, 1, 0], [480, 175, 0, -1], [270, 290, -1, 0]];
+const CARD = [[12, 466], [768, 466], [768, 46], [12, 46]]; // 1P 좌하 · 2P 우하 · 3P 우상 · 4P 좌상
+const yen = n => '¥' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+// 타원 위 등속 이동용 호길이 표 (시계 방향)
+const ARC = []; let LEN = 0;
+{ let px = CX + RX, py = CY; for (let i = 1; i <= 720; i++) { const a = i / 720 * Math.PI * 2, x = CX + RX * Math.cos(a), y = CY + RY * Math.sin(a); LEN += Math.hypot(x - px, y - py); ARC.push({ s: LEN, x, y }); px = x; py = y; } }
+const RAIL_V = LEN / LAP;
+function railPos(s) { s = ((s % LEN) + LEN) % LEN; let lo = 0, hi = ARC.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (ARC[m].s < s) lo = m + 1; else hi = m; } return ARC[lo]; }
+function pickType() { let r = Math.random() * 100; for (let i = 0; i < SUSHI.length; i++) { r -= SUSHI[i].p; if (r < 0) return i; } return 1; }
+function toFloor(x, y, kx = 1, ky = kx) { const u = (x - CX) / (FX * kx), v = (y - CY) / (FY * ky), r = Math.hypot(u, v); return r > 1 ? { x: CX + u / r * FX * kx, y: CY + v / r * FY * ky } : { x, y }; }
+function otext(ctx, s, x, y, size, fill, stroke = palette.ink, align = 'center') { ctx.save(); ctx.font = `bold ${size}px sans-serif`; ctx.textAlign = align; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size / 6); ctx.strokeStyle = stroke; ctx.strokeText(s, x, y); ctx.fillStyle = fill; ctx.fillText(s, x, y); ctx.restore(); }
+
+let P, plates, rail, pops, parts, chef, playT, lastSec;
+const platePos = (pl, ahead = 0) => railPos(rail + pl.i * LEN / SLOTS + ahead);
+const newPlate = i => { const t = pickType(); return { i, type: t, next: pickType(), wasabi: t >= 5 && Math.random() < WASABI, age: 9, emptyT: 0, avoid: Math.random() < DIFF.normal.tea }; };
+function spawn(pl) { pl.type = pl.next; pl.next = pickType(); pl.wasabi = pl.type >= 5 && Math.random() < WASABI; pl.age = 0; pl.emptyT = 0; pl.avoid = Math.random() < DIFF.normal.tea; const S = SUSHI[pl.type]; if (S.shout) { chef.say = S.shout; chef.t = 1.0; chef.jump = 0.45; sfx.pop(); } }
+function fire(p) { if (p.tng.ph) return; p.tng = { ph: 1, t: 0, len: 0, len0: 0, ate: false, dx: p.dx, dy: p.dy }; if (p.human) sfx.tap(); }
+function retract(p) { const T = p.tng; T.ph = 3; T.t = 0; T.len0 = T.len; }
+// 혀는 다른 플라밍고 몸(r=22)에 막힌다
+function tongueMax(p, L) { const T = p.tng, R = BODY + 4, px = p.x - CX, py = p.y - CY, A = 404 * 404, B = 219 * 219; // 카운터 바깥 벽(타원)에서 멈춤
+  const qa = T.dx * T.dx / A + T.dy * T.dy / B, qb = 2 * (px * T.dx / A + py * T.dy / B), qc = px * px / A + py * py / B - 1; L = Math.min(L, (-qb + Math.sqrt(Math.max(0, qb * qb - 4 * qa * qc))) / (2 * qa));
+  for (const q of P) { if (q === p) continue; const wx = q.x - p.x, wy = q.y - p.y, pr = wx * T.dx + wy * T.dy; if (pr <= 0 || pr > L + R) continue; const pd = Math.hypot(wx - pr * T.dx, wy - pr * T.dy); if (pd < R) L = Math.min(L, Math.max(0, pr - Math.sqrt(R * R - pd * pd))); } return L; }
+function eat(p, pl, q) {
+  const S = SUSHI[pl.type], hot = pl.type === 0 || pl.wasabi; let mult = 1;
+  if (hot) { p.streak = 0; p.last = -1; } else { p.streak = p.last === pl.type ? p.streak + 1 : 1; p.last = pl.type; mult = Math.min(5, p.streak); }
+  const gain = S.v * mult; p.bill += gain; p.tng.ate = true; retract(p);
+  const py = Math.max(q.y - 12, 104); pops.push({ x: q.x, y: py, s: '+' + yen(gain), c: palette.white, t: 0.8 }); // 상단 접시는 주방장 카운터 아래에서 시작
+  if (mult >= 2) { pops.push({ x: q.x, y: py === q.y - 12 ? py - 26 : py + 28, s: '×' + mult + '!', c: palette.gold, t: 0.8 }); sfx.good(); } else sfx.pop();
+  if (hot) { const ph = rand(0, Math.PI * 2), c = toFloor(p.x - Math.cos(ph) * BZ_R, p.y - Math.sin(ph) * BZ_R, (FX - BZ_R - 4) / FX, (FY - BZ_R - 4) / FY); // 폭주 원 중심을 바닥 안쪽(반지름만큼 축소한 타원)으로 clamp
+    p.bz = BZ_T; p.bzKind = pl.type === 0 ? 'red' : 'green'; p.bcx = c.x; p.bcy = c.y; p.bzA = ph; p.bzIn = 0.1; p.target = null; sfx.bad(); }
+  pl.type = -1; pl.emptyT = 0;
+}
+// CPU: 후보 평가 → 접시의 미래 위치 근처로 이동 → 리치 안에 들어오면 A
+function ai(p, dt) {
+  const D = DIFF[p.diff]; p.re -= dt;
+  const visible = pl => pl.type >= 0 ? pl.age >= D.see : D.fore > 0 && pl.emptyT >= REFILL - D.fore;
+  if (p.re <= 0) { p.re = D.re; const cands = [];
+    for (const pl of plates) { if (!visible(pl)) continue; const t = pl.type >= 0 ? pl.type : pl.next; if (t === 0 && (D.tea >= 1 || pl.avoid)) continue; // 차 회피는 스폰당 1회 판정
+      const f = platePos(pl, RAIL_V * 0.4), d = Math.hypot(f.x - p.x, f.y - p.y), mult = p.last === t ? Math.min(D.combo, p.streak + 1) : 1;
+      cands.push({ pl, v: SUSHI[t].v * mult / Math.max(40, d) }); }
+    cands.sort((a, b) => b.v - a.v);
+    p.target = cands.length ? (Math.random() < D.irr ? cands[Math.floor(Math.random() * cands.length)] : cands[0]).pl : null;
+    if (D.push && Math.random() < D.push) { const n = P.find(q => q !== p && q.tng.ph && Math.hypot(q.x - p.x, q.y - p.y) < 80); if (n) { p.pushT = 0.3; p.pushTo = n; } }
+  }
+  if (p.pushT > 0) { p.pushT -= dt; return { x: p.pushTo.x - p.x, y: p.pushTo.y - p.y }; }
+  const pl = p.target; if (!pl || !visible(pl)) { p.target = null; return { x: 0, y: 0 }; }
+  const f = platePos(pl, RAIL_V * 0.4), sp = toFloor(f.x, f.y, 0.85), dx = sp.x - p.x, dy = sp.y - p.y;
+  if (Math.hypot(dx, dy) > 6) return { x: dx, y: dy };
+  const a = platePos(pl, RAIL_V * 0.2), ax = a.x + rand(-D.err, D.err) - p.x, ay = a.y + rand(-D.err, D.err) - p.y, ad = Math.hypot(ax, ay);
+  p.dx = ax / ad; p.dy = ay / ad;
+  if (pl.type >= 0 && ad < REACH - 10) { if (Math.random() < D.miss) { const r = rand(0.4, 0.7) * (Math.random() < 0.5 ? -1 : 1), c = Math.cos(r), s = Math.sin(r); [p.dx, p.dy] = [p.dx * c - p.dy * s, p.dx * s + p.dy * c]; } fire(p); }
+  return { x: 0, y: 0 };
+}
+// 접시 + 초밥 8종 (원작 외형 묘사 기준: 말이=검정 바탕 흰 원 2개, 군함=검정 아래+색 윗면 …)
+function drawSushi(ctx, k) {
+  const el = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(x, y, w, h, 0, 0, 7); ctx.fill(); };
+  const dot = (x, y, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); };
+  switch (k) {
+    case 0: rr(ctx, -7, -5, 14, 12, 3, '#3E9B5A'); el(0, -5, 7, 3, '#7CCB8E'); el(0, -5, 4, 1.5, '#9C7B4B'); break;
+    case 1: case 3: el(0, 0, 12, 9, '#1E1E1E'); dot(-5, 0, 4.5, palette.white); dot(5, 0, 4.5, palette.white); dot(-5, 0, 2, k === 1 ? '#4FB24F' : '#FF6FA0'); dot(5, 0, 2, k === 1 ? '#4FB24F' : '#FF6FA0'); break;
+    case 2: el(0, 3, 11, 6, '#FFFDF5'); el(0, -3, 11, 5, '#FFD23F'); ctx.fillStyle = '#1E1E1E'; ctx.fillRect(-3, -8, 6, 14); break;
+    case 4: case 7: el(0, 3, 11, 6, '#1E1E1E'); el(0, -3, 10, 5, k === 4 ? '#FF4E3A' : '#FF9A2E'); if (k === 4) { dot(-4, -4, 2, '#FF8A60'); dot(3, -3, 2, '#FF8A60'); } break;
+    case 5: el(0, 3, 11, 6, '#FFFDF5'); el(0, -3, 11, 5, '#FF8C42'); ctx.fillStyle = palette.white; for (let i = -6; i <= 6; i += 4) ctx.fillRect(i, -7, 2, 8); break;
+    case 6: el(0, 3, 11, 6, '#FFFDF5'); el(0, -3, 11, 5, '#E5322D'); el(0, -4, 6, 1.2, 'rgba(255,255,255,.6)'); break;
+  }
+}
+function drawPlate(ctx, x, y, k, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.fillStyle = k >= 5 ? palette.gold : '#C9C9C9'; ctx.beginPath(); ctx.arc(0, 0, 18, 0, 7); ctx.fill();
+  ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(0, 0, 15, 0, 7); ctx.fill();
+  if (k >= 0) drawSushi(ctx, k); ctx.restore();
+}
+
+g = Game({ id: 'sushi', title: '초밥 뷔페', duration: 60,
+  howto: ['←→↑↓ 이동 · A 버튼으로 부리를 뻗어 지나가는 초밥 먹기', '같은 초밥을 연달아 먹으면 ×2→×5 · 60초 뒤 계산서가 가장 비싼 쪽이 승리', '뜨거운 차(¥20)와 와사비 든 고급 초밥은 2초 폭주 — 조심!'],
+  init() {
+    P = slots().map((s, i) => ({ ...s, x: START[i][0], y: START[i][1], dx: START[i][2], dy: START[i][3], flip: START[i][2] < 0, bill: 0, streak: 0, last: -1,
+      tng: { ph: 0, t: 0, len: 0, len0: 0, ate: false, dx: 0, dy: 1 }, bz: 0, bzIn: 0, bzKind: 'red', bzA: 0, bcx: 0, bcy: 0, moving: false, target: null, re: rand(0, 0.3), pushT: 0, pushTo: null,
+      diff: s.human ? null : CPU_DIFF }));
+    plates = []; for (let i = 0; i < SLOTS; i++) plates.push(newPlate(i));
+    rail = 0; pops = []; parts = []; chef = { say: '많이 드세요!', t: 1.6, jump: 0 }; playT = 0; lastSec = 99;
+  },
+  update(dt) {
+    playT += dt; rail += RAIL_V * dt; chef.t -= dt; chef.jump -= dt; if (playT > 65) g.finish(); // 안전장치 (셸 타이머가 60초에 끝냄)
+    const sec = Math.ceil(g.timeLeft); if (sec <= 10 && sec !== lastSec) { lastSec = sec; sfx.tick(); }
+    for (const pl of plates) { if (pl.type < 0) { pl.emptyT += dt; if (pl.emptyT >= REFILL) spawn(pl); } else pl.age += dt; }
+    P.forEach((p, i) => {
+      const T = p.tng;
+      if (p.bz > 0) { // 폭주: 조작 불능, 반지름 40 원운동 260px/s
+        p.bz -= dt; p.bzA += BZ_SPEED / BZ_R * dt; const k = p.bzIn > 0 ? Math.min(1, dt / p.bzIn) : 1; p.bzIn -= dt; p.x += (p.bcx + Math.cos(p.bzA) * BZ_R - p.x) * k; p.y += (p.bcy + Math.sin(p.bzA) * BZ_R - p.y) * k; // 첫 0.1초는 원 궤도로 보간 p.dx = -Math.sin(p.bzA); p.dy = Math.cos(p.bzA); p.moving = true;
+        if (Math.random() < 21 * dt) parts.push({ x: p.x + rand(-12, 12), y: p.y - 34, vy: -70, life: 0.6, c: p.bzKind === 'red' ? 'rgba(255,255,255,.85)' : '#7BE07B' });
+      } else if (!T.ph) { // 혀 뻗는 중엔 이동 불가 · 같은 프레임의 방향 입력을 먼저 반영한 뒤 A(발사 프레임엔 제자리)
+        let m = { x: 0, y: 0 }, a = false;
+        if (p.human) { m = g.p(i).axis(); a = g.p(i).hit('a'); } else m = ai(p, dt);
+        const l = Math.hypot(m.x, m.y); if (l > 0) { p.dx = m.x / l; p.dy = m.y / l; }
+        if (a) fire(p); else if (l > 0) { p.x += p.dx * SPEED * dt; p.y += p.dy * SPEED * dt; }
+        p.moving = l > 0 && !a;
+      } else p.moving = false;
+      if (p.dx < 0) p.flip = true; else if (p.dx > 0) p.flip = false;
+    });
+    // 몸 충돌·밀치기 (겹친 깊이를 반씩, 폭주 중인 몸은 2배 힘) + 바닥 타원 clamp
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) { const a = P[i], b = P[j]; let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy); if (d >= BODY * 2) continue; if (d < 1) { dx = 1; dy = 0; d = 1; }
+      const ov = BODY * 2 - d, wa = a.bz > 0 ? 2 : 1, wb = b.bz > 0 ? 2 : 1; a.x -= dx / d * ov * wb / (wa + wb); a.y -= dy / d * ov * wb / (wa + wb); b.x += dx / d * ov * wa / (wa + wb); b.y += dy / d * ov * wa / (wa + wb); }
+    for (const p of P) { const f = toFloor(p.x, p.y); p.x = f.x; p.y = f.y; }
+    // 혀: 뻗기 0.18s → 머무름 0.06s → 회수 0.18s
+    for (const p of P) { const T = p.tng; if (!T.ph) continue; T.t += dt;
+      if (T.ph === 1) { T.len = tongueMax(p, REACH * Math.min(1, T.t / T_OUT)); if (T.t >= T_OUT) { T.ph = 2; T.t = 0; } }
+      else if (T.ph === 2) { T.len = tongueMax(p, REACH); if (T.t >= T_HOLD) retract(p); }
+      else { T.len = T.len0 * Math.max(0, 1 - T.t / T_BACK); if (T.t >= T_BACK) { T.ph = 0; if (!T.ate && p.human) sfx.beep(220, 0.05, 'sine', 0.03); } } }
+    // 먹기: 혀 끝(r14)과 초밥 접시(r18) 겹침, 같은 접시는 더 가까운 혀 끝이 먹는다
+    for (const pl of plates) { if (pl.type < 0) continue; const q = platePos(pl); let best = null, bd = 32;
+      for (const p of P) { const T = p.tng; if (T.ph !== 1 && T.ph !== 2) continue; const d = Math.hypot(p.x + T.dx * T.len - q.x, p.y + T.dy * T.len - q.y); if (d < bd) { bd = d; best = p; } }
+      if (best) eat(best, pl, q); }
+    for (const o of pops) { o.t -= dt; o.y -= 38 * dt; } pops = pops.filter(o => o.t > 0);
+    for (const o of parts) { o.life -= dt; o.y += o.vy * dt; } parts = parts.filter(o => o.life > 0);
+  },
+  draw(ctx) {
+    const t = g.time, st = g.state(), sec = Math.ceil(g.timeLeft), bills = P.map(p => p.bill), top = Math.max(...bills), low = Math.min(...bills);
+    bg(ctx, g.W, g.H, '#F6EBD2', '#E9D3AC');
+    for (let k = 0; k < 4; k++) rr(ctx, 200 + k * 140, -6, 136, 18, 6, k % 2 ? '#2E4A7A' : '#C93B3B'); // 노렌
+    drawFlamingo(ctx, 455, 56, 0.8, chef.jump > 0 ? 'jump' : 'idle', t, '#F4E4EA'); // 주방장(모자·앞치마)
+    rr(ctx, 460, 8, 18, 14, 3, palette.white); rr(ctx, 456, 20, 26, 4, 2, palette.white); rr(ctx, 445, 50, 20, 14, 3, palette.white);
+    rr(ctx, 250, 68, 460, 16, 6, '#8C5A3C'); rr(ctx, 250, 68, 460, 5, 3, '#B07A55'); // 카운터
+    if (chef.t > 0) { rr(ctx, 262, 24, 160, 34, 10, palette.white); ctx.fillStyle = palette.white; ctx.beginPath(); ctx.moveTo(418, 36); ctx.lineTo(436, 42); ctx.lineTo(418, 48); ctx.fill(); text(ctx, chef.say, 342, 47, 16, palette.ink); }
+    text(ctx, '남은 시간', 600, 30, 13, '#6E5A66'); otext(ctx, String(sec), 600, 70, 40, sec <= 10 ? palette.red : palette.white);
+    // 레일(원목+회색 벨트) · 안쪽 바닥 · 가격표 매트
+    ctx.save(); ctx.fillStyle = '#B98A55'; ctx.beginPath(); ctx.ellipse(CX, CY, RX + 35, RY + 30, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#8E8E8E'; ctx.lineWidth = 40; ctx.beginPath(); ctx.ellipse(CX, CY, RX, RY, 0, 0, 7); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 32; ctx.setLineDash([16, 20]); ctx.lineDashOffset = -rail; ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#E9E4D8'; ctx.beginPath(); ctx.ellipse(CX, CY, RX - 35, RY - 30, 0, 0, 7); ctx.fill();
+    ctx.restore(); ctx.save(); ctx.globalAlpha = 0.28; ctx.font = 'bold 12px sans-serif'; SUSHI.forEach((S, k) => text(ctx, `${S.n} ${yen(S.v)}`, 330 + (k % 4) * 100, 280 + (k >> 2) * 22, 12, '#6E5A66')); ctx.restore(); // 가격표: 흐린 글자만(먹을 수 있는 접시로 오인 방지)
+    for (const pl of plates) { const q = platePos(pl); drawPlate(ctx, q.x, q.y, pl.type, pl.type < 0 ? 1 : Math.min(1, 0.4 + pl.age * 3)); }
+    // 플라밍고 4마리 (y 순으로 깊이) + 혀 + 조준 표시 + 이름표
+    [...P].sort((a, b) => a.y - b.y).forEach(p => {
+      const i = p.i, T = p.tng, bz = p.bz > 0;
+      const pose = st === 'end' ? (p.bill === top ? 'jump' : p.bill === low && low !== top ? 'sleep' : 'idle') : bz ? 'dizzy' : T.ph ? 'eat' : p.moving ? 'run' : 'idle';
+      const col = bz ? (p.bzKind === 'red' ? '#FF4444' : '#5DD36A') : p.color;
+      ctx.fillStyle = 'rgba(58,36,48,.15)'; ctx.beginPath(); ctx.ellipse(p.x, p.y + 32, 20, 6, 0, 0, 7); ctx.fill();
+      if (!bz && !T.ph && st !== 'end') { ctx.save(); ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.globalAlpha = .7; ctx.beginPath(); ctx.moveTo(p.x + p.dx * 30, p.y + p.dy * 30); ctx.lineTo(p.x + p.dx * 42, p.y + p.dy * 42); ctx.stroke(); ctx.restore(); }
+      if (T.ph && T.len > 0) { const f = p.flip ? -1 : 1, e = pose === 'eat', ox = p.x + T.dx * 14, oy = p.y + T.dy * 14 - 10, tx = p.x + T.dx * T.len, ty = p.y + T.dy * T.len;
+        ctx.strokeStyle = '#FF8FB8'; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(tx, ty); ctx.stroke(); ctx.fillStyle = '#FF6FA0'; ctx.beginPath(); ctx.arc(tx, ty, 7, 0, 7); ctx.fill(); }
+      drawFlamingo(ctx, p.x, p.y + (bz ? Math.sin(t * 20) * 2 : 0), 1, pose, t + i, col, { flip: p.flip });
+      const nb = P.find(q => q !== p && Math.abs(q.x - p.x) < 64 && Math.abs(q.y - p.y) < 50); // 이름표 겹침 회피(가로+세로)
+      const up = nb && (nb.y > p.y || (nb.y === p.y && i < nb.i));
+      drawPlayerTag(ctx, p.x + (nb ? (p.x < nb.x || (p.x === nb.x && i < nb.i) ? -16 : 16) : 0), p.y - 56 - (up ? 22 : 0), i);
+      if (bz) otext(ctx, p.bzKind === 'red' ? '앗 뜨거!' : '매워!', p.x, p.y - 76, 16, p.bzKind === 'red' ? palette.red : palette.green, palette.white);
+      else if (p.human && st === 'play' && playT > 1.5 && playT < 8 && p.bill === 0) text(ctx, T.ph ? '쫍!' : '접시 앞을 겨냥해 A!', p.x, p.y - 78, 15, palette.pinkDark);
+    });
+    for (const o of parts) { ctx.globalAlpha = o.life; ctx.fillStyle = o.c; ctx.beginPath(); ctx.arc(o.x, o.y, 5, 0, 7); ctx.fill(); }
+    for (const o of pops) { ctx.globalAlpha = Math.min(1, o.t * 3); otext(ctx, o.s, o.x, o.y, o.s[0] === '×' ? 22 : 18, o.c); } ctx.globalAlpha = 1;
+    // HUD 카드: 이름표 + 계산서 금액 + 현재 콤보
+    P.forEach((p, i) => { const [x, y] = CARD[i];
+      rr(ctx, x, y, 180, 64, 12, 'rgba(255,255,255,.9)'); rr(ctx, x, y, 8, 64, 4, p.color);
+      drawPlayerTag(ctx, x + 52, y + 17, i);
+      if (top > 0 && p.bill === top) { rr(ctx, x + 122, y + 7, 48, 20, 10, palette.gold); text(ctx, '1위', x + 146, y + 22, 13, palette.ink); }
+      otext(ctx, yen(p.bill), x + 16, y + 52, 22, palette.white, palette.ink, 'left');
+      if (p.streak >= 2) text(ctx, `×${Math.min(5, p.streak)} ${SUSHI[p.last].n}`, x + 170, y + 52, 13, '#B8860B', 'right');
+      else if (p.last >= 0) text(ctx, SUSHI[p.last].n, x + 170, y + 52, 13, '#9A8A90', 'right');
+    });
+    if (st === 'play' && g.timeLeft < 0.3) otext(ctx, '끝!', 480, 250, 72, palette.gold);
+    // 시작 직후 1.5초 가격표 띠 (원작 메뉴판 화면 대체)
+    if (st === 'play' && playT < 1.5) { ctx.save(); ctx.globalAlpha = Math.min(1, (1.5 - playT) / 0.35); rr(ctx, 160, 84, 640, 66, 12, 'rgba(58,36,48,.9)');
+      SUSHI.forEach((S, k) => { const x = 200 + k * 80; drawPlate(ctx, x, 108, k, 0.9); text(ctx, `${S.n} ${yen(S.v)}`, x, 142, 11, palette.white); }); ctx.restore(); }
+  },
+  result() { chef.say = '계산이요!'; chef.t = 9; return { scores: P.map(p => p.bill), text: '최고 계산서 ' + yen(Math.max(...P.map(p => p.bill))) }; }
+});
+</script></body></html>

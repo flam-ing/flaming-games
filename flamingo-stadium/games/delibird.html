@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>플라밍고 택배 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ←↑→↓ 이동 · 선물 줍기와 배달은 자동 (A·B 버튼 안 씀)</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, text, rr, rand, clamp, slots } = STADIUM;
+// 원작 Delibird's Delivery (specs/delibird.md): 60초, 스틱 이동만. 하단 벨트(우→좌 90px/s)로 흘러오는 선물에 닿으면 자동으로 줍고(자루 5개),
+// 상단 자기 벨트에 올라가면 자동 하역. 가운데 3레인을 가로지르는 털뭉치(꾸꾸리 대체)에 닿으면 자루 전부 소실 + 1.0s 기절(+0.5s 무적).
+// 같은 종류를 연속으로 주우면 k배 연쇄(CHAIN_MULT, 최대 ×5). 무게: 속도 = 260 × max(.45, 1 − .09Σw − (5개면 .10)). 플레이어끼리 밀기 있음.
+const BELT_X = [150, 370, 590, 810], BELT_Y = 66, BELT_H = 46, DELIVER_Y = 122, TOP = 104, BOT = 512, CONV_Y = 480, CONV_V = 90, CHUTE_X = 925;
+const LANES = [{ y: 200, d: 1 }, { y: 280, d: -1 }, { y: 360, d: 1 }], PIG_SPEED = [150, 165, 180], PIG_N = [2, 2, 3], WRAP = 1080; // 20초 페이즈별 속도·레인당 마리 수 (추정)
+const SPEED = 260, SACK = 5, CHAIN_MULT = [1, 2, 3, 4, 5], LIMIT = 66;
+const GIFTS = [ // 점수 pt · 무게 w · 크기 s · 상자색 c · 리본색 r · 등장 비율 p (§4): 사탕·양말·게임기·파란 상자·큰 인형·피아노·반지
+  { pt: 20, w: 0, s: 14, c: '#FF9ACB', r: '#FFFFFF', p: 30 }, { pt: 50, w: 0, s: 18, c: '#FF5A5F', r: '#FFFFFF', p: 25 },
+  { pt: 100, w: .5, s: 20, c: '#B9C0C9', r: '#3A2430', p: 20 }, { pt: 250, w: 1, s: 22, c: '#5AA9FF', r: '#FFD166', p: 12 },
+  { pt: 350, w: 2, s: 26, c: '#3FBFB0', r: '#FFF6EA', p: 7 }, { pt: 600, w: 2.5, s: 30, c: '#2B2B2B', r: '#FFD166', p: 4 },
+  { pt: 1000, w: 0, s: 16, c: '#FFFFFF', r: '#FFD166', p: 2 }];
+// CPU 행동 모델 (§8): delay 재판단 주기(=반응 지연, 레인 판정도 delay초 전 위치로 봄) · T 레인 가드 시간 · miss 판단 누락 확률 · N 자루 목표
+// alpha 점수 가중(0.5 가까운 것 위주 / 1 점수 위주 + 100pt 이상 같은 종류 우선, N개 찰 때까지 모음) · heavy 무거운 선물(잠만보·피아노) Σw 상한. 가짜시계 시뮬 150판(4인 전원 보통, 공급 0.7~1.2s): 평균 ~1,830pt(범위 110~4,790), 벨트 평균 1.4개. 자리별 1위 31/34/40/45. hard는 쓰지 않는 문서용 상수
+const AI = { normal: { delay: .22, T: .35, miss: .25, N: [3, 4], alpha: .5, heavy: 99 }, hard: { delay: .14, T: .45, miss: .1, N: [4, 5], alpha: 1, heavy: 5 } };
+let seat = [0, 1, 2, 3], g, P, gifts, pigs, fx, pops, snow, caption, elapsed, spawnT, run, bigT, lastSec, phase, pending;
+
+function say(s, life = 0.8) { caption = { s, life }; }
+function pop(x, y, s, c) { pops.push({ x, y, s, c, life: 1 }); }
+function pickType() { // 비율 추첨 — 반지는 30초 이후 ×2, 반지·피아노는 벨트에 동시 1개 이하, 35%로 같은 종류 2~4개 연달아 (연쇄 유도)
+  if (run.n > 0) { run.n--; return run.t; }
+  let tot = 0; const w = GIFTS.map((G, k) => { let v = k === 6 && elapsed > 30 ? G.p * 2 : G.p; if (k >= 5 && gifts.some(q => q.t === k)) v = 0; tot += v; return v; });
+  let r = Math.random() * tot, t = 0; for (let k = 0; k < 7; k++) { r -= w[k]; if (r <= 0) { t = k; break; } }
+  if (t < 5 && Math.random() < 0.35) run = { t, n: 1 + Math.floor(Math.random() * 3) }; // 같은 종류 2~4개 연속
+  return t;
+}
+function spawnGift(x = CHUTE_X, drop = 0.25) { gifts.push({ t: pickType(), x, y: CONV_Y, drop, dead: false }); } // 투입구에서 0.25s 낙하 후 벨트를 탄다
+function addPig(lane, x, big) { const L = LANES[lane]; pigs.push({ lane, x, y: L.y, d: L.d, v: PIG_SPEED[phase] * 1, r: big ? 30 : 16, big }); }
+function speedOf(p) { const w = p.sack.reduce((a, it) => a + GIFTS[it.t].w, 0); return SPEED * Math.max(0.45, 1 - 0.09 * w - (p.sack.length >= SACK ? 0.1 : 0)); }
+function inBelt(p) { return p.y <= DELIVER_Y && Math.abs(p.x - BELT_X[seat[p.i]]) < 78; }
+function pickup(p, q) { // 자루 안 직전 선물과 같은 종류면 연쇄 k배, 아니면 1로 리셋. 획득 시점에 배수를 확정해 자루에 저장
+  p.chain = p.sack.length && p.sack[p.sack.length - 1].t === q.t ? p.chain + 1 : 1;
+  const m = CHAIN_MULT[Math.min(p.chain, 5) - 1]; p.sack.push({ t: q.t, v: GIFTS[q.t].pt * m, m });
+  q.dead = true; fx.push({ x: q.x, y: q.y, t: q.t, kind: 'pop', life: 0.2 }); p.eat = 0.12; sfx.tap(); if (p.sack.length >= SACK) sfx.pop();
+}
+function deliver(p) { // 자루 전체 하역: 선물이 벨트를 타고 위로 흘러가고 "+750 ×3!" 팝업(연쇄 있으면 금색)
+  const total = p.sack.reduce((a, it) => a + it.v, 0), best = Math.max(...p.sack.map(it => it.m)), bx = BELT_X[seat[p.i]];
+  p.sack.forEach((it, k) => fx.push({ x: bx - 48 + k * 24, y: BELT_Y + 28, t: it.t, kind: 'up', life: 0.5 }));
+  p.score += total; p.sack = []; p.chain = 0; p.jump = 0.3; sfx.good();
+  pop(bx, BELT_Y + BELT_H + 34, '+' + total + (best >= 2 ? ` ×${best}!` : ''), best >= 2 ? palette.gold : palette.white);
+}
+function knock(p) { // 털뭉치 충돌: 자루 전부 소실(4방향으로 튀어 0.4s 페이드, 회수 불가), 1.0s 기절 + 0.5s 무적, 연쇄 리셋. 배달한 점수는 안전
+  p.sack.forEach((it, k) => fx.push({ x: p.x, y: p.y - 24, t: it.t, kind: 'fly', ang: k * Math.PI / 2 + Math.PI / 4, life: 0.4 }));
+  p.sack = []; p.chain = 0; p.dizzy = 1.0; p.inv = 1.5; p.dir = { x: 0, y: 0 }; p.moving = false; sfx.hit(); if (!p.human) { p.state = 'pick'; p.target = null; }
+}
+function laneDanger(k, x, T, lag) { // lag초 전 위치 기준으로, 가드 시간 T + 횡단 0.25s 안에 x를 지날 털뭉치가 있는가 (이미 겹치면 위험, 멀어지는 중이면 안전)
+  return pigs.some(s => { if (s.lane !== k) return false; const rx = s.x - s.d * s.v * lag - x, ax = Math.abs(rx); return ax < 40 + s.r || (Math.sign(rx) !== s.d && (ax - 40 - s.r) / s.v < T + 0.25); });
+}
+function aiThink(p, A) { // 상태기계 pick → deliver. 자루가 목표 N개 차거나, 남은 시간이 왕복+1.5s 미만이거나, 막판 5초면 배달 (막판 러시)
+  const sp = speedOf(p), bx = BELT_X[seat[p.i]], tripT = Math.hypot(bx - p.x, 110 - p.y) / sp, short = g.timeLeft < tripT + 1.5 || g.timeLeft < 5;
+  if (p.sack.length && (p.sack.length >= p.N || short)) p.state = 'deliver';
+  if (p.state === 'deliver' && !p.sack.length) { p.state = 'pick'; p.N = A.N[0] + (Math.random() < 0.5 ? 1 : 0); }
+  if (p.state === 'deliver') { p.target = { x: bx, y: 110 }; return; }
+  // 벨트가 흐르므로 도착 예상 x로 마중(2회 반복 추정). 가치 = pt^alpha / 거리. Hard: 마지막 종류와 같고 100pt 이상(또는 이미 ×2 이상)이면 거리 ×0.5, 무거운 것 Σw ≤ 5
+  let best = null, bv = 0; const last = p.sack.length ? p.sack[p.sack.length - 1].t : -1, heavy = p.sack.reduce((a, it) => a + (GIFTS[it.t].w >= 2 ? GIFTS[it.t].w : 0), 0);
+  for (const q of gifts) {
+    if (q.dead || q.drop > 0 || (GIFTS[q.t].w >= 2 && heavy + GIFTS[q.t].w > A.heavy)) continue;
+    let px = q.x - CONV_V * Math.hypot(q.x - p.x, q.y - p.y) / sp; px = q.x - CONV_V * Math.hypot(px - p.x, q.y - p.y) / sp; if (px < 40) continue;
+    let d = Math.hypot(px - p.x, q.y - p.y); if (q.t === last && A.alpha >= 1 && (GIFTS[q.t].pt >= 100 || p.chain >= 2)) d *= 0.5;
+    const v = Math.pow(GIFTS[q.t].pt, A.alpha) / (d + 80); if (v > bv) { bv = v; best = { x: clamp(px, 40, 930), y: CONV_Y }; }
+  }
+  if (best) p.target = best; else if (p.sack.length && (short || (A.alpha < 1 && p.sack.length >= 2))) p.state = 'deliver'; else p.target = { x: p.x, y: 420 }; // 벨트가 비면 하단 안전지대에서 대기
+}
+function aiMove(p, A, dt) { // 반응 지연 = delay 주기마다만 목표 재판단, 목표 방향에 ±8° 흔들림(0.3s 갱신)
+  p.think -= dt; if (p.think <= 0) { p.think = A.delay; aiThink(p, A); }
+  p.jitT -= dt; if (p.jitT <= 0) { p.jitT = 0.3; p.jit = rand(-0.14, 0.14); }
+  const t = p.target; if (!t) { p.dir = { x: 0, y: 0 }; return; }
+  const dx = t.x - p.x, dy = t.y - p.y; if (Math.hypot(dx, dy) < 6) { p.dir = { x: 0, y: 0 }; return; }
+  const a = Math.atan2(dy, dx) + p.jit; p.dir = { x: Math.cos(a), y: Math.sin(a) };
+  // 레인 가드(매 프레임, delay초 전 위치로 판단): 진행 방향의 다음 레인 앞 30~44px에서 위험하면 대기. 레인마다 miss 확률로 판단 생략(=돌진)
+  const sy = Math.sign(dy); if (!sy) return;
+  const next = LANES.map((L, k) => k).filter(k => sy > 0 ? LANES[k].y > p.y + 20 : LANES[k].y < p.y - 20).sort((a, b) => Math.abs(LANES[a].y - p.y) - Math.abs(LANES[b].y - p.y))[0];
+  if (next == null) return; const gap = Math.abs(LANES[next].y - p.y);
+  if (p.guardLane !== next) { p.guardLane = next; p.skip = Math.random() < A.miss; }
+  if (!p.skip && gap < 44 && gap > 30 && laneDanger(next, p.x, A.T, A.delay)) { p.dir.y = 0; if (Math.abs(dx) < 8) p.dir.x = 0; }
+}
+function move(p, dt) { // 홀드형 이동, 관성 없음. 필드 경계 클램프
+  const sp = speedOf(p); p.moving = !!(p.dir.x || p.dir.y);
+  p.x = clamp(p.x + p.dir.x * sp * dt, 30, 930); p.y = clamp(p.y + p.dir.y * sp * dt, TOP, BOT); if (p.dir.x) p.face = p.dir.x < 0 ? -1 : 1;
+}
+function drawGift(ctx, x, y, t, sc = 1, alpha = 1) { // 리본 달린 상자(크기 = 점수 비례). 사탕은 포장 사탕, 반지는 반짝이는 흰 고리
+  const G = GIFTS[t], s = G.s * sc; ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y);
+  if (t === 6) {
+    ctx.strokeStyle = palette.white; ctx.lineWidth = 4 * sc; ctx.beginPath(); ctx.arc(0, 2, 7 * sc, 0, 7); ctx.stroke(); ctx.fillStyle = palette.gold; ctx.beginPath(); ctx.arc(0, -6 * sc, 4 * sc, 0, 7); ctx.fill();
+    ctx.strokeStyle = palette.gold; ctx.lineWidth = 2; for (let k = 0; k < 3; k++) { const a = g.time * 4 + k * 2.1, px = Math.cos(a) * 13 * sc, py = Math.sin(a) * 13 * sc; ctx.beginPath(); ctx.moveTo(px - 3, py); ctx.lineTo(px + 3, py); ctx.moveTo(px, py - 3); ctx.lineTo(px, py + 3); ctx.stroke(); }
+  } else if (t === 0) {
+    ctx.fillStyle = G.c; ctx.beginPath(); ctx.ellipse(0, 0, s / 2, s / 2.6, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-s / 2, 0); ctx.lineTo(-s / 2 - 5, -5); ctx.lineTo(-s / 2 - 5, 5); ctx.moveTo(s / 2, 0); ctx.lineTo(s / 2 + 5, -5); ctx.lineTo(s / 2 + 5, 5); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.ellipse(-2, -2, 3, 1.6, -0.4, 0, 7); ctx.fill();
+  } else {
+    if (t === 1) { ctx.fillStyle = G.c; ctx.fillRect(-5, -s / 2, 10, s - 4); ctx.fillRect(-5, s / 2 - 9, 14, 9); ctx.fillStyle = G.r; ctx.fillRect(-6, -s / 2, 12, 5); ctx.restore(); return; } // 양말(부츠 모양)
+    rr(ctx, -s / 2, -s / 2, s, s, 4, G.c); ctx.fillStyle = G.r; ctx.fillRect(-s / 2, -2.5, s, 5); ctx.fillRect(-2.5, -s / 2, 5, s);
+    ctx.beginPath(); ctx.arc(-4, -s / 2 - 2, 3.5, 0, 7); ctx.arc(4, -s / 2 - 2, 3.5, 0, 7); ctx.fill();
+    if (t === 5) { ctx.fillStyle = palette.white; ctx.fillRect(-s / 2 + 3, s / 2 - 8, s - 6, 4); } // 피아노 건반
+    if (t === 2) { ctx.fillStyle = '#7CC77B'; ctx.fillRect(-5, -8, 10, 5); } // 휴대게임기 화면
+  }
+  ctx.restore();
+}
+function drawPig(ctx, s) { // 꾸꾸리 대체: 갈색 줄무늬 털뭉치 + 눈·코·다리. 큰 녀석은 2배 + 엄니. 진행 방향으로 뒤집기
+  const k = s.r / 16, wob = Math.sin(g.time * 18 + s.lane * 2) * 1.5, lg = Math.sin(g.time * 22 + s.lane) * 4; ctx.save(); ctx.translate(s.x + wob, s.y); ctx.scale(k * s.d, k);
+  ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.beginPath(); ctx.ellipse(0, 16, 18, 5, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#5A3A1A'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, 10); ctx.lineTo(-8 + lg, 18); ctx.moveTo(6, 10); ctx.lineTo(6 - lg, 18); ctx.stroke();
+  ctx.fillStyle = s.big ? '#7A4A22' : '#8B5A2B'; ctx.beginPath(); ctx.ellipse(0, 0, 18, 13, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#5A3A1A'; [-9, -1, 7].forEach(x => { ctx.beginPath(); ctx.ellipse(x, -5, 3, 6, 0.2, 0, 7); ctx.fill(); });
+  ctx.fillStyle = '#A8703B'; ctx.beginPath(); ctx.arc(12, 3, 8, 0, 7); ctx.fill(); ctx.fillStyle = '#F2A3C0'; ctx.beginPath(); ctx.ellipse(18, 4, 4, 3, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(8, -1, 3, 0, 7); ctx.fill(); ctx.fillStyle = palette.ink; ctx.beginPath(); ctx.arc(9, -1, 1.6, 0, 7); ctx.fill();
+  if (s.big) { ctx.fillStyle = palette.white; ctx.beginPath(); ctx.moveTo(13, 6); ctx.lineTo(23, 13); ctx.lineTo(15, 10); ctx.fill(); }
+  ctx.restore();
+}
+function tree(ctx, x, y) { // 가장자리 전나무 실루엣 (눈 모자)
+  ctx.fillStyle = '#2F6B4F'; for (let j = 0; j < 3; j++) { const w = 28 - j * 7, ty = y - j * 20; ctx.beginPath(); ctx.moveTo(x - w, ty); ctx.lineTo(x, ty - 32); ctx.lineTo(x + w, ty); ctx.fill(); }
+  ctx.fillStyle = palette.white; ctx.beginPath(); ctx.moveTo(x - 9, y - 62); ctx.lineTo(x, y - 72); ctx.lineTo(x + 9, y - 62); ctx.fill(); rr(ctx, x - 5, y, 10, 12, 2, '#6B4A2E');
+}
+function drawPlayer(ctx, p, ended, max, min) { // 포즈(§1): 이동 run · 정지 idle · 줍기 eat · 배달 jump · 충돌 dizzy · 결과 1위 fly, 꼴찌 sleep. 무적 중 깜빡임
+  let pose = p.dizzy > 0 ? 'dizzy' : p.jump > 0 ? 'jump' : p.eat > 0 ? 'eat' : p.moving ? 'run' : 'idle', fy = p.y - 30;
+  if (ended) { pose = p.score === max ? 'fly' : p.score === min && max !== min ? 'sleep' : 'idle'; if (pose === 'fly') fy -= 24 + Math.sin(g.time * 5) * 8; }
+  const blink = p.inv > 0 && p.dizzy <= 0 && Math.floor(g.time * 12) % 2 === 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.beginPath(); ctx.ellipse(p.x, p.y + 4, 22, 6, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#C93B3B'; ctx.beginPath(); ctx.arc(p.x - p.face * 20, fy + 2, 11, 0, 7); ctx.fill(); // 등에 멘 빨간 자루
+  drawFlamingo(ctx, p.x, fy, 1.1, pose, g.time + p.i, p.color, { flip: p.face < 0, alpha: blink ? 0.35 : 1 });
+  ctx.strokeStyle = 'rgba(58,36,48,0.5)'; ctx.lineWidth = 1; // 자루 내용 5칸 (빈 칸 회색)
+  const sx = p.x - p.face * 20, sy = fy + 2; // 5칸은 빨간 자루 아래쪽 호 모양, ×k 배지는 그 옆
+  for (let k = 0; k < SACK; k++) { const a = Math.PI * (0.15 + k * 0.175); ctx.fillStyle = p.sack[k] ? GIFTS[p.sack[k].t].c : 'rgba(58,36,48,0.18)'; ctx.beginPath(); ctx.arc(sx + Math.cos(a) * 17, sy + Math.sin(a) * 17, 4, 0, 7); ctx.fill(); ctx.stroke(); }
+  if (p.chain >= 2) { const bx = sx - p.face * 34 - 17; rr(ctx, bx, sy + 4, 34, 18, 9, palette.gold); text(ctx, '×' + Math.min(p.chain, 5), bx + 17, sy + 18, 13, palette.ink); }
+  if (p.full > 0) text(ctx, '가득!', sx, sy - 16, 15, palette.red);
+  drawPlayerTag(ctx, p.x, p.y + 20, p.i);
+  if (p.human && g.state() === 'play' && elapsed < 8 && p.score === 0 && p.dizzy <= 0) { const s = p.sack.length ? '위쪽 내 벨트로 배달!' : '아래 벨트에서 선물을 주워요'; rr(ctx, p.x - 92, TOP + 46, 184, 24, 12, 'rgba(255,246,234,0.92)'); text(ctx, s, p.x, TOP + 63, 14, palette.pinkDark); } // 레인 위 안전띠에
+}
+
+g = Game({ id: 'delibird', title: '플라밍고 택배', howto: ['←↑→↓ 로 이동 · A·B 버튼은 쓰지 않아요', '아래 벨트의 선물을 주워(자루 5개) 위쪽 내 벨트에 올라가면 자동 배달!', '같은 선물 연속은 최대 ×5 · 달리는 녀석에 닿으면 자루를 다 잃어요'], duration: 60,
+  init() { // 항상 4마리. 사람이면 입력, 아니면 CPU — 스펙 §5·B-2대로 CPU 전원 보통(원작 COM 공통 설정). hard 테이블은 상수로만 남김
+    seat = [0, 1, 2, 3].sort(() => Math.random() - 0.5); elapsed = 0; run = { t: 0, n: 0 }; gifts = []; pigs = []; fx = []; pops = []; caption = null; spawnT = 1; bigT = Math.random() < 0.05 ? rand(30, 50) : -1; lastSec = 60; phase = 0; pending = [false, false, false];
+    P = slots().map((s, i) => ({ ...s, x: BELT_X[seat[i]], y: 160, face: seat[i] < 2 ? 1 : -1, dir: { x: 0, y: 0 }, moving: false, score: 0, sack: [], chain: 0, eat: 0, jump: 0, dizzy: 0, inv: 0, full: 0,
+      lv: 'normal', state: 'pick', target: null, think: rand(0.1, 0.5), jit: 0, jitT: 0, guardLane: -1, skip: false, N: 3 }));
+    P.forEach(p => { p.N = AI[p.lv].N[0] + (Math.random() < 0.5 ? 1 : 0); });
+    for (let k = 0; k < 6; k++) spawnGift(140 + k * 140, 0); // 시작부터 벨트에 선물 6개
+    LANES.forEach((L, k) => { for (let j = 0; j < PIG_N[0]; j++) addPig(k, ((k * 230 + j * WRAP / 2 + 60) % WRAP) - 60, false); }); // 레인당 등간격·주기적, 레인끼리 어긋나게
+    snow = Array.from({ length: 30 }, () => ({ x: rand(0, 960), y: rand(0, 540), v: rand(20, 40), r: rand(2, 4) }));
+  },
+  update(dt) {
+    elapsed += dt; if (elapsed > LIMIT) g.finish(); // 안전장치 (셸 타이머가 60초에 끝냄)
+    const ph = Math.min(2, Math.floor(elapsed / 20)); if (ph !== phase) { phase = ph; if (PIG_N[ph] > PIG_N[ph - 1]) LANES.forEach((L, k) => { // 추가 마리는 가장 넓은 간격의 한가운데 → 다시 등간격
+      const xs = pigs.filter(s => s.lane === k && !s.big).map(s => s.x).sort((a, b) => a - b); let gx = 0, gw = -1;
+      xs.forEach((x, j) => { const nx = j + 1 < xs.length ? xs[j + 1] : xs[0] + WRAP; if (nx - x > gw) { gw = nx - x; gx = x + gw / 2; } });
+      addPig(k, ((gx + 60) % WRAP) - 60, false); }); }
+    for (const s of pigs) { s.v = PIG_SPEED[phase] * 1; s.x += s.d * s.v * dt; if (s.x > WRAP - 60) s.x -= WRAP; else if (s.x < -60) s.x += WRAP; }
+    if (bigT > 0 && elapsed > bigT) { bigT = -1; pending[Math.floor(rand(0, 3))] = 'big'; } // 희귀 큰 녀석(메꾸리 대체): 게임당 5%, 30~50초 중 1회. 판정 2배, 같은 속도로 그 레인의 가장 가까운 보통 녀석을 대체(간격 유지)
+    LANES.forEach((L, k) => { const ex = L.d > 0 ? -60 : WRAP - 60; if (pending[k] && !pigs.some(s => s.lane === k && Math.abs(s.x - ex) < 260)) { pending[k] = false; const ns = pigs.filter(s => s.lane === k && !s.big).sort((a, b) => Math.abs(a.x - ex) - Math.abs(b.x - ex))[0]; if (ns) pigs.splice(pigs.indexOf(ns), 1); addPig(k, ex, true); sfx.bad(); say('큰 녀석이 온다!'); } }); // 화면 밖 진입점에서 간격 두고
+    for (const q of gifts) { if (q.drop > 0) { q.drop -= dt; q.y = CONV_Y - 70 * Math.max(0, q.drop) / 0.25; } else { q.x -= CONV_V * dt; if (q.x < -20) q.dead = true; } }
+    spawnT -= dt; if (spawnT <= 0 && gifts.length < 12) { spawnGift(rand(200, CHUTE_X)); spawnT = rand(0.7, 1.2); } // §5 0.7~1.2s. 투하 x를 벨트 전체에 흩어 오른쪽 자리 선점 이점 제거
+    for (const p of P) {
+      p.eat -= dt; p.jump -= dt; p.dizzy -= dt; p.inv -= dt; p.full -= dt;
+      if (p.dizzy > 0) continue;
+      if (p.human) { const a = g.p(p.i).axis(), l = Math.hypot(a.x, a.y); p.dir = l ? { x: a.x / l, y: a.y / l } : { x: 0, y: 0 }; } else aiMove(p, AI[p.lv], dt);
+      move(p, dt);
+    }
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) { // 밀기: 반경 18 원형, 반씩 밀림. 기절 중이거나 자기 벨트 안이면 안 밀림
+      const a = P[i], b = P[j]; if (a.dizzy > 0 || b.dizzy > 0 || inBelt(a) || inBelt(b)) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
+      if (d < 36) { const k = (36 - d) / 2 / d; a.x = clamp(a.x - dx * k, 30, 930); a.y = clamp(a.y - dy * k, TOP, BOT); b.x = clamp(b.x + dx * k, 30, 930); b.y = clamp(b.y + dy * k, TOP, BOT); }
+    }
+    for (const p of P) {
+      if (p.dizzy > 0) continue;
+      if (p.sack.length && inBelt(p)) deliver(p);
+      for (const q of gifts) if (!q.dead && q.drop <= 0 && Math.hypot(q.x - p.x, q.y - p.y) < 26) { if (p.sack.length < SACK) { pickup(p, q); break; } else if (p.full <= 0) p.full = 0.4; }
+      if (p.inv <= 0) for (const s of pigs) if (Math.hypot(s.x - p.x, s.y - p.y) < s.r + 12) { knock(p); break; }
+    }
+    gifts = gifts.filter(q => !q.dead);
+    for (const e of fx) { e.life -= dt; if (e.kind === 'up') e.y -= 120 * dt; else if (e.kind === 'fly') { e.x += Math.cos(e.ang) * 170 * dt; e.y += Math.sin(e.ang) * 170 * dt; } } fx = fx.filter(e => e.life > 0);
+    for (const o of pops) { o.y -= 40 * dt; o.life -= dt; } pops = pops.filter(o => o.life > 0);
+    if (caption) { caption.life -= dt; if (caption.life <= 0) caption = null; }
+    const sec = Math.ceil(g.timeLeft); if (sec !== lastSec) { lastSec = sec; if (sec <= 10 && sec > 0) sfx.tick(); } // 막판 10초 초 카운트
+  },
+  draw(ctx) {
+    const W = g.W, H = g.H, st = g.state(), ended = st === 'end';
+    ctx.fillStyle = '#1c2b4a'; ctx.fillRect(0, 0, W, 128); ctx.fillStyle = '#f2f6fa'; ctx.fillRect(0, 128, W, H - 128); // 밤하늘 띠 + 눈밭
+    ctx.fillStyle = 'rgba(170,190,215,0.35)'; ctx.fillRect(0, 172, W, 216); // 털뭉치 레인 띠
+    ctx.strokeStyle = 'rgba(120,140,170,0.35)'; ctx.lineWidth = 2; ctx.setLineDash([12, 10]); LANES.forEach(L => { ctx.beginPath(); ctx.moveTo(0, L.y + 12); ctx.lineTo(W, L.y + 12); ctx.stroke(); }); ctx.setLineDash([]);
+    [[16, 178], [944, 178], [16, 434], [944, 434]].forEach(([x, y]) => tree(ctx, x, y));
+    // 하단 컨베이어(우→좌 화살표) + 오른쪽 투입구
+    ctx.fillStyle = '#4A4E57'; ctx.fillRect(0, 440, W, 80); ctx.fillStyle = '#5c616b'; ctx.fillRect(0, 440, W, 6); ctx.fillRect(0, 514, W, 6);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 3; const off = (g.time * CONV_V) % 60;
+    for (let k = 0; k <= 17; k++) { const x = k * 60 - off; ctx.beginPath(); ctx.moveTo(x + 10, 466); ctx.lineTo(x, 480); ctx.lineTo(x + 10, 494); ctx.stroke(); }
+    rr(ctx, CHUTE_X - 30, 392, 60, 44, 6, '#2f3340'); rr(ctx, CHUTE_X - 20, 424, 40, 14, 4, '#111');
+    // 상단 벨트 4개(플레이어 색 테두리, 위로 흐르는 화살표) + HUD: 배지 · 점수 (벨트 바로 위)
+    BELT_X.forEach((bx, k) => { const i = seat.indexOf(k); // 벨트 주인은 판마다 무작위(자리 유불리 제거)
+      rr(ctx, bx - 80, BELT_Y, 160, BELT_H, 8, '#3d4250'); ctx.strokeStyle = palette.players[i]; ctx.lineWidth = 4; ctx.beginPath(); ctx.roundRect(bx - 80, BELT_Y, 160, BELT_H, 8); ctx.stroke();
+      ctx.save(); ctx.beginPath(); ctx.rect(bx - 78, BELT_Y + 2, 156, BELT_H - 4); ctx.clip(); ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 3; const o = (g.time * 40) % 22;
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) { const x = bx - 62 + c * 25, y = BELT_Y + 8 + r * 22 - o; ctx.beginPath(); ctx.moveTo(x - 6, y + 6); ctx.lineTo(x, y); ctx.lineTo(x + 6, y + 6); ctx.stroke(); } ctx.restore();
+      drawPlayerTag(ctx, bx - 44, 50, i); if (P) text(ctx, String(P[i].score), bx + 78, 58, 24, palette.players[i], 'right');
+    });
+    if (st === 'play') { rr(ctx, 8, 10, 76, 28, 8, 'rgba(255,246,234,0.85)'); rr(ctx, W - 150, 10, 142, 28, 8, 'rgba(255,246,234,0.85)'); } // 셸 HUD(남은 시간·BEST) 받침
+    text(ctx, String(ended ? 0 : st === 'play' ? Math.max(0, Math.ceil(g.timeLeft)) : 60), W / 2, 46, 40, g.timeLeft <= 10 && st === 'play' ? palette.red : palette.cream);
+    if (!P) return;
+    const max = Math.max(...P.map(p => p.score)), min = Math.min(...P.map(p => p.score)); // y 정렬(2.5D): 아래쪽이 앞
+    const items = gifts.map(q => ({ y: q.y, f: () => drawGift(ctx, q.x, q.y, q.t, 1, q.x < 20 ? clamp((q.x + 20) / 40, 0, 1) : 1) }));
+    pigs.forEach(s => items.push({ y: s.y, f: () => drawPig(ctx, s) }));
+    P.forEach(p => items.push({ y: p.y, f: () => drawPlayer(ctx, p, ended, max, min) }));
+    fx.forEach(e => items.push({ y: 999, f: () => { ctx.save(); if (e.kind === 'up') { ctx.beginPath(); ctx.rect(0, BELT_Y + 2, W, BELT_H - 4); ctx.clip(); } drawGift(ctx, e.x, e.y, e.t, e.kind === 'pop' ? (e.life > 0.1 ? 1 + (0.2 - e.life) * 3 : e.life * 13) : 1, clamp(e.life * 3, 0, 1)); ctx.restore(); } })); // 'up'은 벨트 안으로 클립
+    items.sort((a, b) => a.y - b.y).forEach(o => o.f());
+    if (!ended) for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 2); text(ctx, o.s, o.x, o.y + 1, 24, palette.ink); text(ctx, o.s, o.x, o.y, 24, o.c); } ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(205,225,245,0.9)'; for (const f of snow) { const y = (f.y + f.v * g.time) % 548 - 4, x = f.x + Math.sin(g.time * 0.7 + f.v) * 16; ctx.beginPath(); ctx.arc(x, y, f.r, 0, 7); ctx.fill(); } // 눈 (시간 함수라 타이틀에서도 내림)
+    if (caption) { ctx.globalAlpha = Math.min(1, caption.life * 3); rr(ctx, W / 2 - 130, 140, 260, 34, 17, 'rgba(58,36,48,0.8)'); text(ctx, caption.s, W / 2, 164, 18, palette.gold); ctx.globalAlpha = 1; }
+  },
+  result() { // 동점은 같은 점수를 그대로 넘겨 셸이 공동 순위로 처리 (원작 동점 퀴즈 대신)
+    const max = Math.max(...P.map(p => p.score)), w = P.filter(p => p.score === max).map(p => p.name);
+    return { scores: P.map(p => p.score), text: `가장 많이 배달한 건 ${w.join('·')} — ${max}pt!` };
+  } });
+</script></body></html>

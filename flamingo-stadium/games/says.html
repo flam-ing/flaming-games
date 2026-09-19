@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>플라밍고 세이즈 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ↑↓←→ 로 화살표 순서 입력 (A·B 버튼은 쓰지 않음)</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+// 플라밍고 세이즈 — 원작 Clefairy Says(포켓몬 스타디움 1 키즈 클럽). 규칙·타이밍·수치는 specs/says.md 기준.
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, rr, text, rand, clamp, lerp, slots } = STADIUM;
+let g, P; // P = 학생 4명, index = 슬롯(왼쪽부터 1P~4P 고정). human이면 g.p(i) 입력, 아니면 COM 행동 모델
+const DIRS = ['up', 'down', 'left', 'right']; // 같은 프레임에 두 방향이 들어오면 이 순서로 하나만 채택
+const GLYPH = { up: '↑', down: '↓', left: '←', right: '→' }, FREQ = { up: 880, down: 440, left: 660, right: 550 };
+const POSE = { up: 'jump', down: 'dig', left: 'run', right: 'run' }, ANG = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 };
+const COUNTS = [4, 6, 8, 10, 12], GAPS = [0.6, 0.55, 0.5, 0.45, 0.4], MAXHP = 5, REPLAY = 0.15, SAFETY = 160;
+const SX = [180, 380, 580, 780], SY = 400, BX = 200, BY = 40, BW = 560, BH = 160, FLOOR = 288, HOME = { x: 130, y: 230 };
+// COM 행동 모델(spec §8): 반응 지연·키 간격(초)·개당 정확도 p_key·무입력 확률. 원작처럼 3명 모두 같은 난이도(기본 Normal), 개체차 ±0.01
+const COM = { normal: { react: [0.4, 0.8], key: [0.35, 0.65], p: 0.92, skip: 0.03 }, hard: { react: [0.25, 0.55], key: [0.28, 0.48], p: 0.95, skip: 0.01 } };
+const LEVEL = 'normal';
+const LABEL = { intro: '준비', show: '잘 보세요', erase: '지우는 중', input: '따라 하세요!', replay: '춤 재현', judge: '채점 중', end: '결과' };
+let said, round, seq, phase, pt, fresh, showIdx, arrowT, rstep, limit, tLeft, doneT, speed, queue, jstage, jt, target, teacher, pops, parts, msg, msgT, elapsed;
+
+const say = (s, d = 1.2) => { msg = s; msgT = d; };
+const pop = (x, y, s, c) => pops.push({ x, y, s, c, life: 0.9 });
+const setPhase = p => { phase = p; pt = 0; fresh = true; };
+const walkTo = (x, y, dur) => { teacher.walk = { x0: teacher.x, y0: teacher.y, x1: x, y1: y, t: 0, dur }; };
+const beepDir = d => sfx.beep(FREQ[d], 0.08, 'square', 0.05);
+const burst = (x, y, n, c) => { for (let k = 0; k < n; k++) parts.push({ x, y, vx: rand(-160, 160), vy: rand(-260, -60), life: rand(0.4, 0.7), c }); };
+function star(ctx, x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); for (let k = 0; k < 10; k++) { const a = k * Math.PI / 5 - Math.PI / 2, d = k % 2 ? r * 0.45 : r; ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); } ctx.closePath(); ctx.fill(); }
+
+function press(p, d) { // 화살표 1개 입력 — 사람·COM 공통. 정답 개수만큼 넣으면 완료, 이후 무시. 되돌리기 없음, 정오 피드백 없음
+  if (!p.alive || p.done) return;
+  p.inp.push(d); p.pose = 'jump'; p.poseT = 0.15; p.flip = false; sfx.tick(); // 입력 중엔 방향 비공개(중립 반응), 방향은 replay에서만
+  if (p.inp.length >= seq.length) p.done = true;
+}
+function planAI(p) { // 라운드 시작 시 성공 여부(p_key^n)·틀릴 위치(균등)·타이밍을 미리 굴린다. 키 간격은 제한 시간 안에 끝나도록 클램프
+  const c = COM[LEVEL], n = seq.length, react = rand(c.react[0], c.react[1]);
+  p.ai = { skip: Math.random() < c.skip, failAt: Math.random() < Math.pow(p.pkey, n) ? -1 : Math.floor(rand(0, n)), next: react, idx: 0, keyMax: (limit - react - 0.5) / n };
+}
+function newRound() {
+  const n = COUNTS[round]; seq = []; for (let i = 0; i < n; i++) seq.push(DIRS[Math.floor(rand(0, 4))]); // 4방향 균등, 연속 중복 허용, 4명이 같은 순서
+  speed = P.some(p => p.human && p.alive) ? 1 : 2; // 사람 전원 탈락 시 남은 라운드 2배속(규칙엔 영향 없음)
+  limit = (n + 2) / speed; showIdx = -1; arrowT = 9; queue = []; target = null;
+  P.forEach(p => { p.inp = []; p.done = false; p.res = null; p.poseT = 0; p.pose = p.alive ? 'idle' : 'sleep'; if (p.alive && !p.human) planAI(p); });
+  said = false; setPhase('intro'); if (teacher.x !== HOME.x || teacher.y !== HOME.y) walkTo(HOME.x, HOME.y, 0.5);
+}
+function toJudge() { // 라운드 말 일괄 채점: 순서 전부 일치해야 정답. 오답·미완료·무입력은 모두 망치 1대(라운드당 최대 1대)
+  setPhase('judge'); jstage = 'next'; jt = 0; const n = seq.length; let good = false;
+  P.forEach(p => {
+    if (!p.alive) return; p.res = p.inp.length === n && p.inp.every((d, k) => d === seq[k]) ? 'ok' : 'miss';
+    if (p.res === 'ok') { p.pose = 'fly'; p.poseT = 0.6; pop(SX[p.i], 268, '정답!', palette.green); good = true; } else queue.push(p);
+  });
+  if (good) sfx.good();
+}
+function bonk(p) { // 뿅망치: HP -1, 5대면 탈락. 삐걱 소리는 하강 스윕 3음으로
+  sfx.hit(); [1200, 800, 420].forEach((f, k) => setTimeout(() => sfx.beep(f, 0.07, 'square', 0.08), k * 50)); setTimeout(sfx.bad, 200);
+  p.misses++; p.pose = 'hit'; p.poseT = 0.9; burst(SX[p.i] + 18, SY - 40, 8, palette.gold); pop(SX[p.i], 268, '땡!', palette.red);
+  if (p.misses >= MAXHP) { p.alive = false; p.elim = round + 1; say(`${p.name} 탈락…`, 1.0); sfx.lose(); }
+}
+function endRound() {
+  const alive = P.filter(p => p.alive);
+  if (alive.length > 1 && round < 4) { round++; newRound(); return; } // 생존자 ≤1이면 즉시 종료, 아니면 5라운드까지
+  const pool = alive.length ? alive : P, min = Math.min(...pool.map(p => p.misses)), win = pool.filter(p => p.misses === min); // 동일 misses = 공동 승자
+  win.forEach(p => { p.pose = 'fly'; p.poseT = 1.3; }); say(`승자는 ${win.map(p => p.name).join('·')}!`, 1.5); if (win.some(p => p.human)) sfx.win(); else sfx.good(); setPhase('end');
+}
+
+g = Game({ id: 'says', title: '플라밍고 세이즈', howto: ['선생님이 칠판에 그리는 화살표 순서를 외우세요', '칠판이 지워지면 ↑↓←→ 로 순서대로 입력!', '틀리거나 안 누르면 뿅망치 한 대 · 5대면 탈락 · 덜 맞은 쪽이 승리'], duration: 0,
+  init() {
+    P = slots().map(s => ({ ...s, misses: 0, alive: true, elim: 0, inp: [], done: false, pose: 'idle', poseT: 0, flip: false, res: null, ai: null, pkey: COM[LEVEL].p + rand(-0.01, 0.01) }));
+    teacher = { x: HOME.x, y: HOME.y, walk: null, point: -0.9, swing: 0 }; pops = []; parts = []; round = 0; elapsed = 0; msgT = 0; rstep = -1;
+    newRound(); // 자막·효과음은 GO! 뒤 첫 intro 프레임에서(타이틀 뒤 장면은 조용히)
+  },
+  update(dt) {
+    elapsed += dt; pt += dt; if (msgT > 0) msgT -= dt; fresh = false;
+    const w = teacher.walk; if (w) { w.t += dt; const k = Math.min(1, w.t / w.dur); teacher.x = lerp(w.x0, w.x1, k); teacher.y = lerp(w.y0, w.y1, k); if (k >= 1) teacher.walk = null; }
+    teacher.swing = Math.max(0, teacher.swing - dt);
+    P.forEach(p => {
+      if (p.poseT > 0) { p.poseT -= dt; if (p.pose === 'hit' && p.poseT < 0.6) p.pose = 'dizzy'; if (p.poseT <= 0) p.pose = p.alive ? 'idle' : 'sleep'; }
+    });
+    parts.forEach(q => { q.vy += 600 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; }); parts = parts.filter(q => q.life > 0);
+    pops.forEach(q => { q.y -= 40 * dt; q.life -= dt; }); pops = pops.filter(q => q.life > 0);
+    if (elapsed > SAFETY) { g.finish(); return; } // 안전장치: 무제한 게임이 반드시 끝나도록(정상 최대 ≈100s)
+    const n = seq.length, gap = GAPS[round] / speed;
+    if (phase === 'intro') { // 선생님이 지시봉으로 칠판을 두드리며 라운드 안내
+      if (round === 0 && elapsed < 0.8) pt = 0; // R1은 셸 GO! 오버레이가 끝난 뒤 시작
+      else { if (!said) { said = true; say(round === 4 ? '마지막 라운드! 12개나 됩니다!' : `라운드 ${round + 1} · 선생님을 잘 보세요~`); sfx.count(); } if (pt >= 0.8) setPhase('show'); }
+    } else if (phase === 'show') { // 화살표를 등간격(노래 박자)으로 하나씩 그린다. 그려진 것은 칠판에 누적
+      const idx = Math.min(n - 1, Math.floor(pt / gap)); arrowT += dt;
+      if (idx > showIdx) { showIdx = idx; arrowT = 0; sfx.tap(); beepDir(seq[idx]); teacher.point = ANG[seq[idx]]; teacher.swing = 0.4; }
+      if (pt >= n * gap) { setPhase('erase'); say('이제 따라 해 보세요!', 1.0); }
+    } else if (phase === 'erase') { if (pt >= 0.6) { setPhase('input'); tLeft = limit; doneT = null; } }
+    else if (phase === 'input') { // 자유 타이밍 입력. 제한 = 1s×n + 2s. show/erase 중 입력은 큐에 쌓이지 않는다
+      tLeft -= dt;
+      P.forEach((p, i) => {
+        if (!p.alive || p.done) return;
+        if (p.human) { const d = DIRS.find(d => g.p(i).hit(d)); if (d) press(p, d); return; } // pressed[]는 매 프레임 flush → 선입력 큐 없음
+        const a = p.ai; if (a.skip || pt < a.next) return; // 무입력(시간초과) COM은 아예 손대지 않음
+        press(p, a.idx === a.failAt ? DIRS.filter(x => x !== seq[a.idx])[Math.floor(rand(0, 3))] : seq[a.idx]); // 틀리는 키에서 엉뚱한 포즈
+        a.idx++; a.next += Math.min(a.keyMax, rand(COM[LEVEL].key[0], COM[LEVEL].key[1]));
+      });
+      if (doneT == null && P.every(p => !p.alive || p.done)) doneT = 0.8; // 생존자 전원 완료 → 0.8s 뒤 종료
+      if (doneT != null) doneT -= dt;
+      if (tLeft <= 0 || (doneT != null && doneT <= 0)) { tLeft = Math.max(0, tLeft); setPhase('replay'); rstep = -1; P.forEach(p => { p.poseT = 0; p.pose = p.alive ? 'idle' : 'sleep'; }); }
+    } else if (phase === 'replay') { // 입력한 순서를 4명이 동시에 춤으로 재현(0.15s×n), 머리 위에 글리프(틀린 자리는 빨강)
+      const k = Math.floor(pt / REPLAY);
+      if (k < n && k !== rstep) { rstep = k; sfx.tick(); P.forEach(p => { const d = p.alive && p.inp[k]; if (d) { p.pose = POSE[d]; p.poseT = REPLAY; p.flip = d === 'left'; } }); }
+      if (pt >= REPLAY * n + 0.4) toJudge();
+    } else if (phase === 'judge') { // 선생님이 1P→4P 순으로 오답자 앞으로만 이동(0.3s)해 망치질(0.3s), 끝나면 0.8s 대기
+      jt -= dt;
+      if (jstage === 'next') { target = queue.shift(); if (target) { walkTo(SX[target.i] - 100, 410, 0.3); jstage = 'walk'; jt = 0.3; } else { jstage = 'wait'; jt = 0.8; } }
+      else if (jt <= 0) { if (jstage === 'walk') { jstage = 'swing'; jt = 0.3; } else if (jstage === 'swing') { bonk(target); jstage = 'next'; } else endRound(); }
+    } else if (phase === 'end') { if (pt >= 1.2) g.finish(); } // 승자 fly 1.2s 뒤 결과 화면
+  },
+  draw(ctx) {
+    const W = g.W, H = g.H, t = g.time, n = seq.length, inp = phase === 'input';
+    rr(ctx, 0, 0, W, H, 0, inp ? '#FFE0EC' : palette.cream); // 크림색 벽(입력 중엔 분홍)
+    rr(ctx, 0, FLOOR, W, H - FLOOR, 0, '#D9B383'); ctx.fillStyle = '#C69C6D'; for (let x = 32; x < W; x += 64) ctx.fillRect(x, FLOOR, 2, H); rr(ctx, 0, FLOOR - 6, W, 8, 0, '#B98A5C');
+    [40, 810].forEach(x => { rr(ctx, x - 4, 56, 118, 98, 8, '#B98A5C'); rr(ctx, x, 60, 110, 90, 6, palette.sky); rr(ctx, x + 52, 60, 6, 90, 0, palette.white); rr(ctx, x, 102, 110, 6, 0, palette.white); });
+    // 칠판 + 화살표(누적 표시, 새 화살표는 1.3→1 팝). 지우기는 지우개 스윕 + 페이드
+    rr(ctx, BX - 12, BY - 12, BW + 24, BH + 24, 12, '#8C5A3C'); rr(ctx, BX, BY, BW, BH, 6, '#2F5D3A'); rr(ctx, BX - 12, BY + BH + 4, BW + 24, 10, 4, '#A67450');
+    text(ctx, `R${round + 1}`, BX + 14, BY + 26, 16, 'rgba(255,255,255,.5)', 'left');
+    const shown = phase === 'show' ? showIdx + 1 : phase === 'erase' ? n : 0, ex = BX - 50 + pt / 0.6 * (BW + 100);
+    if (shown > 0) {
+      const rows = n > 10 ? 2 : 1, per = Math.ceil(n / rows);
+      for (let i = 0; i < shown; i++) {
+        const x = BX + BW / 2 + (i % per - (per - 1) / 2) * 44, y = rows === 1 ? BY + BH / 2 : BY + 52 + Math.floor(i / per) * 60, s = i === showIdx && arrowT < 0.15 ? 1 + 0.3 * (1 - arrowT / 0.15) : 1;
+        ctx.save(); ctx.globalAlpha = phase === 'erase' ? clamp((x - ex) / 60, 0, 1) : 1; ctx.translate(x, y); ctx.scale(s, s); text(ctx, GLYPH[seq[i]], 0, 15, 42, palette.white); ctx.restore();
+      }
+      if (phase === 'erase') { rr(ctx, ex - 36, BY + BH / 2 - 18, 72, 36, 6, '#4A4A4A'); rr(ctx, ex - 36, BY + BH / 2 - 18, 72, 12, 6, '#7A7A7A'); }
+    }
+    if (inp) { rr(ctx, BX, 222, BW, 14, 7, '#E8D8D0'); rr(ctx, BX, 222, BW * clamp(tLeft / limit, 0, 1), 14, 7, tLeft < limit * 0.3 ? palette.red : palette.pinkDark); text(ctx, `${tLeft.toFixed(1)}s`, BX + BW + 12, 235, 15, palette.ink, 'left'); }
+    text(ctx, `라운드 ${round + 1} / 5`, 16, 32, 22, palette.ink, 'left'); text(ctx, LABEL[phase] + (speed > 1 ? ' ×2' : ''), W - 16, 32, 18, palette.pinkDark, 'right');
+    // 학생 4명: 책상, 머리 위 태그 + 피격 마크 5칸(○→✕) + 입력 진행 점 / 재현 글리프
+    P.forEach((p, i) => {
+      const x = SX[i], dy = p.pose === 'sleep' ? 18 : 0;
+      ctx.fillStyle = 'rgba(58,36,48,.12)'; ctx.beginPath(); ctx.ellipse(x, SY + 36, 28, 6, 0, 0, 7); ctx.fill();
+      drawFlamingo(ctx, x, SY + dy, 1, p.pose, t + i, p.color, { flip: p.flip && p.pose === 'run' });
+      if (p.pose === 'dizzy') for (let k = 0; k < 3; k++) { const a = t * 7 + k * 2.1; star(ctx, x + 18 + Math.cos(a) * 24, SY - 46 + Math.sin(a) * 6, 6, palette.gold); }
+      rr(ctx, x - 44, SY + 24, 88, 14, 5, '#B07A4A'); rr(ctx, x - 38, SY + 38, 7, 30, 2, '#8A5A32'); rr(ctx, x + 31, SY + 38, 7, 30, 2, '#8A5A32');
+      drawPlayerTag(ctx, x, 292, i);
+      for (let k = 0; k < MAXHP; k++) {
+        const mx = x - 32 + k * 16, my = 318;
+        if (k < p.misses) { ctx.strokeStyle = palette.red; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(mx - 5, my - 5); ctx.lineTo(mx + 5, my + 5); ctx.moveTo(mx + 5, my - 5); ctx.lineTo(mx - 5, my + 5); ctx.stroke(); }
+        else { ctx.fillStyle = palette.white; ctx.strokeStyle = palette.ink; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(mx, my, 5.5, 0, 7); ctx.fill(); ctx.stroke(); }
+      }
+      if (!p.alive) text(ctx, '탈락', x, 346, 14, palette.red);
+      else if (inp) for (let k = 0; k < n; k++) { ctx.fillStyle = k < p.inp.length ? p.color : 'rgba(58,36,48,.25)'; ctx.beginPath(); ctx.arc(x + (k - (n - 1) / 2) * 11, 342, 4, 0, 7); ctx.fill(); }
+      else if (phase === 'replay' || phase === 'judge') {
+        if (!p.inp.length) text(ctx, '입력 없음', x, 346, 13, palette.red);
+        else p.inp.slice(0, phase === 'judge' ? n : rstep + 1).forEach((d, k) => text(ctx, GLYPH[d], x + (k - (p.inp.length - 1) / 2) * 12, 347, 15, d === seq[k] ? palette.ink : palette.red));
+      }
+    });
+    // 선생님(금색, 안경) — 보여줄 때 지시봉(intro엔 칠판 두드리기), 채점 때 뿅망치, 결과 때 손뼉
+    const T = teacher, tp = T.walk ? 'run' : phase === 'end' ? (Math.floor(t * 5) % 2 ? 'jump' : 'idle') : 'idle';
+    drawFlamingo(ctx, T.x, T.y, 1.6, tp, t, palette.gold);
+    const hy = T.y - 57 + (tp === 'idle' ? Math.sin(t * 3) * 1.5 : tp === 'run' ? Math.sin(t * 20) * 2 : 0) * 1.6;
+    ctx.strokeStyle = palette.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(T.x + 31, hy, 6, 0, 7); ctx.moveTo(T.x + 25, hy); ctx.arc(T.x + 19, hy, 6, 0, 7); ctx.stroke();
+    if (phase === 'judge' || phase === 'end') {
+      const k = jstage === 'swing' ? Math.pow(1 - clamp(jt / 0.3, 0, 1), 2) : 0, ang = phase === 'end' ? -1.6 + Math.sin(t * 10) * 0.2 : lerp(-1.6, -0.17, k);
+      ctx.save(); ctx.translate(T.x + 26, T.y - 26); ctx.rotate(ang); rr(ctx, 0, -3, 76, 6, 3, palette.red); rr(ctx, 62, -11, 30, 22, 6, palette.gold); rr(ctx, 72, -11, 8, 22, 2, '#E0A040'); ctx.restore();
+    } else {
+      const ang = phase === 'intro' ? -0.9 + Math.abs(Math.sin(t * 12)) * 0.35 : lerp(-0.9, T.point, clamp(T.swing / 0.4, 0, 1));
+      ctx.save(); ctx.translate(T.x + 22, T.y - 12); ctx.rotate(ang); ctx.strokeStyle = '#6B4A2E'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(70, 0); ctx.stroke(); ctx.fillStyle = palette.red; ctx.beginPath(); ctx.arc(72, 0, 5, 0, 7); ctx.fill(); ctx.restore();
+    }
+    parts.forEach(q => { ctx.globalAlpha = clamp(q.life * 2, 0, 1); star(ctx, q.x, q.y, 5, q.c); }); ctx.globalAlpha = 1;
+    pops.forEach(q => { ctx.globalAlpha = clamp(q.life * 1.5, 0, 1); text(ctx, q.s, q.x + 1, q.y + 1, 22, 'rgba(58,36,48,.55)'); text(ctx, q.s, q.x, q.y, 22, q.c); }); ctx.globalAlpha = 1;
+    if (msgT > 0 && g.state() !== 'end') { ctx.save(); ctx.font = 'bold 20px sans-serif'; const tw = ctx.measureText(msg).width + 36, my = phase === 'judge' || phase === 'end' ? 190 : 244; ctx.globalAlpha = clamp(msgT * 3, 0, 1); rr(ctx, W / 2 - tw / 2, my, tw, 36, 18, 'rgba(58,36,48,.85)'); text(ctx, msg, W / 2, my + 25, 20, palette.white); ctx.restore(); } // 결과 화면(셸 오버레이) 위에는 자막을 남기지 않는다
+  },
+  result() { // 생존자 100+(5-misses)*10 → 항상 탈락자(탈락 라운드×10) 위. 동일 misses는 공동 순위, 타이브레이크 없음
+    return { scores: P.map(p => p.alive ? 100 + (MAXHP - p.misses) * 10 : p.elim * 10), text: P.map(p => p.alive ? `${p.name} HP ${MAXHP - p.misses}/${MAXHP}·피격 ${p.misses}회` : `${p.name} R${p.elim} 탈락`).join('  ·  ') };
+  } });
+</script></body></html>

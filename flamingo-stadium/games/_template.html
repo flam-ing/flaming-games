@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GAME TITLE · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ...</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, input, sfx, bg, text, rr, rand, clamp, lerp, slots } = STADIUM;
+let g, P; // P = 4 contestants, index = slot
+g = Game({ id: 'template', title: 'GAME TITLE', howto: ['설명 한 줄', '설명 두 줄'], duration: 30,
+  init() { P = slots().map(s => ({ ...s, score: 0, pose: 'idle' })); },
+  update(dt) { P.forEach((p, i) => { if (p.human) { const k = g.p(i); if (k.hit('a')) p.score++; } else { /* CPU AI */ } }); },
+  draw(ctx) { bg(ctx, g.W, g.H); P.forEach((p, i) => { drawFlamingo(ctx, 150 + i * 220, 400, 2, p.pose, g.time, p.color); drawPlayerTag(ctx, 150 + i * 220, 460, i); }); },
+  result() { return { scores: P.map(p => p.score), text: '' }; } });
+</script></body></html>

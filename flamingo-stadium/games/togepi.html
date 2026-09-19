@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>데굴데굴 플라밍고 · Flamingo Stadium</title></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ↓ 누른 채 달리기 · ←→ 회피 · 버튼 없음</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+// 원작 Tumbling Togepi (포켓몬 스타디움 2) — specs/togepi.md. 러닝머신 4레인, 캐릭터는 발 y=150 고정, 지형은 아래(카메라 쪽)에서 위로 흐른다(DIR=+1).
+// 1 m = 14 px, 트랙 200 m, 제한 시간 없음: 먼저 골인하면 승리, 나머지는 끝까지 달림(1위 골인 +20 s 안전장치). ↓ 홀드 = 100 %, 중립 ×0.75, ↑ ×0.3, ←→ 회피, 버튼 없음.
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, text, rr, rand, clamp, lerp, slots } = STADIUM;
+const HUD = 44, FOOT = 150, PX = 14, TRACK = 200, BASE = 7, BOOST = .35, BT = 1.8, LANE = 240, MOVE = 380, DIR = 1, RETIRE = 20, SAFETY = 75;
+const XMIN = 40, XMAX = 200, COLX = [53, 120, 187], colOf = x => x < 87 ? 0 : x < 154 ? 1 : 2, lx = p => p.i * LANE;
+const HB = { arrow: [28, 20], flower: [18, 18], rock: [22, 16], log: [66, 11], dig: [11, 11] }; // 히트박스 반폭·반높이 (그림보다 8 px 작게)
+// 구간표 §5: [끝 m, 화살표 간격 m, 장애물 밀도(개/m) {flower, rock, log, dig}, 줄당 최대 장애물]. 줄 간격 5~7 m, 줄당 확률 = 밀도 × 간격
+const SEG = [[40, 8, { flower: 1 / 20, log: 1 / 25 }, 1], [100, 9, { flower: 1 / 15, rock: 1 / 20, log: 1 / 20 }, 2],
+  [170, 10, { flower: 1 / 12, rock: 1 / 15, log: 1 / 18 }, 2], [195, 10, { flower: 1 / 15, rock: 1 / 20, dig: 1 / 6 }, 2]];
+// CPU 모델 §8: see 인지 거리 m · d 반응 지연 [평균, σ] s · acc 화살표 열 선택 확률 · miss 막힌 열 직진 확률 · dig 두더지 예고 인식 · mv 좌우 속도 배율 · jit 흔들림 px
+//   keep 부스트 만료 직전 화살표 최우선 · look 다음 줄까지 비어 있는 열을 미리 고를 확률
+// miss/dig는 §8 스펙값. acc·late만으로 시뮬 150판 §5 목표 완주 시간에 맞춤(Normal 26.3 s, Hard 22.2 s, Hard− 22.5 s). 화살표가 빈 열에만 있어 acc 0이어도 Hard ≈23 s. 완벽 플레이 ≈17.5 s
+//   late = 화살표 쪽으로 옮기는 판단만 '늦게 흘림'(그 줄을 다 지난 뒤에야 움직임) 확률. 장애물 회피는 절대 늦추지 않는다
+const AI = { normal: { see: 9, d: [.28, .08], acc: .05, miss: .12, dig: .35, mv: .85, jit: 18, keep: false, look: .2, late: .5 },
+  hard: { see: 13, d: [.17, .05], acc: .15, miss: .05, dig: .7, mv: 1, jit: 8, keep: true, look: .25, late: .5 } };
+AI.hardm = { ...AI.hard, acc: .1, miss: .07 }; // Hard− = Hard보다 화살표·회피가 조금 서툼
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(Math.PI * 2 * Math.random());
+const retireAt = () => Math.max(firstT + RETIRE, TRACK / (BASE * .75) + 16); // 멍하니 ×0.75 주자(38 s + 전도 몇 번 ≈ 50 s)는 절대 리타이어되지 않게
+let g, P, parts, pops, caption, elapsed, firstT, endT, warned;
+
+function makeCourse() { // 4명 공통 코스: 5~7 m마다 한 줄, 줄마다 최소 1열은 비우고 그 빈 열은 앞 줄의 빈 열과 인접(불가능 배치 금지), 화살표는 빈 열에만, 통나무는 2열 (§5)
+  const rows = []; let m = 6, due = 8, prevFree = [0, 1, 2];
+  while (m < 195) {
+    const step = rand(5, 7), [, gap, dn, maxN] = SEG.find(s => m < s[0]), arrow = m >= due; let items, free;
+    for (let tries = 0; tries < 8; tries++) {
+      items = []; free = [0, 1, 2]; let n = 0;
+      if (dn.dig && Math.random() < Math.min(.6, dn.dig * step)) { // 골 직전 두더지 떼: 두 열에 1~2마리씩(1.6 m 간격), 한 열만 비움, 솟는 시점은 랜덤
+        const keep = rand(0, 3) | 0; free = [keep];
+        for (const c of [0, 1, 2]) if (c !== keep) for (let k = 0, kk = Math.random() < .5 ? 2 : 1; k < kk; k++) items.push({ type: 'dig', col: c, m: m + k * 1.6, x: COLX[c], pop: rand(.6, 1.5) });
+      } else for (const t of ['rock', 'flower', 'log']) {
+        const need = t === 'log' ? 2 : 1; if (n >= maxN || free.length - need < 1 || Math.random() >= (dn[t] || 0) * step) continue;
+        if (t === 'log') { const cs = free.filter(c => free.includes(c + 1)); if (!cs.length) continue; const c = cs[rand(0, cs.length) | 0]; items.push({ type: 'log', col: c, m, x: COLX[c] + 33 }); free = free.filter(v => v !== c && v !== c + 1); }
+        else { const c = free[rand(0, free.length) | 0]; items.push({ type: t, col: c, m, x: COLX[c] }); free = free.filter(v => v !== c); }
+        n++;
+      }
+      if (free.some(c => prevFree.some(q => Math.abs(c - q) <= 1))) break; if (tries === 7) { items = []; free = [0, 1, 2]; }
+    }
+    if (arrow) { const c = free[rand(0, free.length) | 0]; items.push({ type: 'arrow', col: c, m, x: COLX[c] }); due += gap * rand(.85, 1.15); }
+    if (items.length) rows.push({ r: rows.length, m, items, end: Math.max(...items.map(o => o.m + (HB[o.type][1] + 10) / PX)) }); // end = 히트박스까지 완전히 지난 지점
+    prevFree = free; m += step;
+  }
+  return rows;
+}
+function say(s) { caption = { s, life: 2.4 }; }
+function burst(x, y, n, c, up, r = 3.5) { for (let k = 0; k < n; k++) parts.push({ x: x + rand(-10, 10), y, vx: rand(-120, 120), vy: rand(-up, -up * .3), life: rand(.35, .6), c, r }); }
+function boost(p) { // 파란 화살표: 레벨 +1(최대 3), 지속 2.0 s 리셋 — 이어 밟기가 이 게임의 전부
+  p.lv = Math.min(3, p.lv + 1); p.bt = BT; if (p.human) sfx.good(); sfx.beep(600 + 200 * p.lv, .08, 'square', p.human ? .06 : .02);
+  pops.push({ x: lx(p) + p.x + 44, y: FOOT - 40, s: `▶ Lv${p.lv}`, c: '#2f7dff', life: .6 });
+}
+function trip(p) { // 바위·두더지: 데굴 전도. hit 0.3 s(입력 불능) + dizzy 0.6 s(좌우만) → BASE로 재출발 + 무적. 귀여운 하강 두 음 (§11-10)
+  p.fall = .9; p.lv = 0; p.bt = 0; p.spd = 0; p.jump = 0; p.plan = null; p.pend = -1; p.next = p.row; p.panic = .2; p.forced = true;
+  sfx.pop(); sfx.beep(330, .08, 'triangle', .12); setTimeout(() => sfx.beep(220, .15, 'triangle', .12), 90); burst(lx(p) + p.x, FOOT, 6, '#b98b4e', 200);
+}
+function finishP(p) { // 골인 시각은 프레임 내 보간(§11-7). 순위 = 골인 순서. 테이프 끊김 + 순위 배지 팝업
+  p.done = true; p.ft = elapsed - (p.dist - TRACK) / Math.max(p.spd, .1); p.dist = TRACK; p.spd = 0; p.lv = 0; p.tape = .8;
+}
+function rankFinishers(fresh) { // 같은 프레임 골인자는 보간 ft 순으로 순위 부여
+  fresh.sort((u, v) => u.ft - v.ft); for (const p of fresh) { p.rank = P.filter(q => q.done && q.rank).length + 1;
+  if (p.rank === 1) { firstT = elapsed; sfx.win(); say(`${p.name} 골인! ${p.ft.toFixed(2)}초`); } else sfx.good();
+  for (let k = 0; k < 10; k++) parts.push({ x: lx(p) + 40 + k * 16, y: FOOT + 10, vx: (k < 5 ? -1 : 1) * rand(80, 220), vy: rand(-220, -60), life: rand(.5, .9), c: p.color, r: 4 });
+} }
+function blocked(p, row, seeDig) { const b = [0, 0, 0]; for (const o of row.items) { if (o.type === 'log') { if (!p.lv) b[o.col] = b[o.col + 1] = 1; } else if (o.type === 'dig') { if (seeDig) b[o.col] = 1; } else if (o.type !== 'arrow') b[o.col] = 1; } return b; }
+function decide(p, row, nxt, fromX) { // 한 줄의 목표 x (§8): 화살표 열을 acc 확률로(부스트 만료 직전 Hard는 무조건), 아니면 가장 가까운 빈 열(다음 줄까지 빈 열 우선), miss 확률로는 막힌 열 그대로 직진
+  const a = AI[p.ai], cur = colOf(fromX), b = blocked(p, row, Math.random() < a.dig), b2 = nxt ? blocked(p, nxt, Math.random() < a.dig) : [0, 0, 0], ar = row.items.find(o => o.type === 'arrow'); let t = cur;
+  const pick = (x = -1) => { const f = [0, 1, 2].filter(c => !b[c]); return (f.length > 1 ? f.filter(c => c !== x) : f).sort((u, v) => (b2[u] - b2[v]) || (Math.abs(u - cur) - Math.abs(v - cur)))[0] ?? cur; }, ax = ar ? ar.col : -1; // acc 실패 = 다른 안전 열이 있으면 화살표 열은 고르지 않는다
+  if (ar && !b[ar.col] && (Math.random() < a.acc || (a.keep && p.lv > 0 && p.bt < .5))) t = ar.col;
+  else if (b[cur] && (p.forced || Math.random() >= a.miss)) t = pick(ax);
+  else if (ar && cur === ax && !b[cur]) t = pick(ax);
+  else if (!b[cur] && b2[cur] && Math.random() < a.look) t = pick(ax); // 이 줄은 비었지만 다음 줄이 막힌 열 → 미리 옮겨 둔다
+  p.forced = false; return clamp(COLX[t] + rand(-a.jit, a.jit), XMIN, XMAX);
+}
+function aiThink(p, dt) { // 인지 거리 안에 들어온 다음 줄을 반응 지연 뒤 판단. 한 줄 앞까지만 미리 계획(plan)해 두고, 현재 줄을 다 지나면(또는 지금 옮겨도 안전하면) 계획이 목표가 된다
+  const a = AI[p.ai], C = p.course;
+  while (p.row < C.length && C[p.row].end < p.dist) { p.row++; if (p.plan && p.plan.r <= p.row) { if (p.plan.r === p.row) p.tx = p.plan.tx; p.plan = null; } }
+  if (p.next < p.row) p.next = p.row;
+  if (p.plan && !p.plan.late && p.pend < 0 && p.row < C.length) { const cur = C[p.row], c = colOf(p.plan.tx); if (!blocked(p, cur, true)[c] && !cur.items.some(o => o.type === 'arrow' && !o.used && o.col === colOf(p.tx))) { p.tx = p.plan.tx; p.plan = null; } }
+  if (p.pend < 0 && !p.plan && p.next < C.length && p.next <= p.row + 1 && C[p.next].m - p.dist <= a.see) { p.pend = p.next++; p.wait = p.react * rand(.7, 1.3) + p.panic; p.panic = 0; }
+  if (p.pend >= 0 && (p.wait -= dt) <= 0) { const r = p.pend; p.pend = -1; if (r === p.row) { const tx = decide(p, C[r], C[r + 1], p.x); const ar = C[r].items.find(o => o.type === 'arrow'); if (ar && colOf(tx) === ar.col && colOf(p.x) !== ar.col && !blocked(p, C[r], true)[colOf(p.x)] && Math.random() < a.late) p.plan = { r: r + 1, tx, late: true }; else p.tx = tx; } else if (r > p.row) p.plan = { r, tx: decide(p, C[r], C[r + 1], p.tx) }; }
+}
+function step(p, dt) {
+  let dx = 0, run = 1;
+  if (p.human) { const k = g.p(p.i).axis(); if (k.y > 0 && (p.hold += dt) > .3) p.tut = false; dx = k.x * MOVE * dt; run = k.y > 0 ? 1 : k.y < 0 ? .3 : .75; }
+  else { aiThink(p, dt); const mv = MOVE * AI[p.ai].mv * dt; dx = clamp(p.tx - p.x, -mv, mv); }
+  if (p.fall > .6) dx = 0; // hit 구간은 입력 전부 무시, dizzy 구간은 좌우만
+  p.x = clamp(p.x + dx, XMIN, XMAX);
+  if (p.fall > 0 && (p.fall -= dt) <= 0) { p.inv = .5; p.spd = BASE * run; } // 재출발: 즉시 BASE, 0.5 s 무적(걸린 장애물을 벗어날 만큼)
+  p.inv -= dt; p.jump -= dt; if ((p.bt -= dt) <= 0) p.lv = 0;
+  const tgt = p.fall > 0 ? 0 : BASE * (1 + BOOST * p.lv) * run * (p.onFl ? .45 : 1) * (p.jump > 0 && !p.jfree ? .6 : 1);
+  p.spd = tgt > p.spd ? Math.min(tgt, p.spd + 30 * dt) : Math.max(tgt, p.spd - 20 * dt); // 출발 0→BASE ≈0.25 s, 부스트 해제 감속 ≈0.4 s
+  p.dist += p.spd * dt; p.anim += dt * p.spd / BASE;
+  let onFl = false;
+  for (const r of p.course) {
+    if (r.m > p.dist + 30) break; if (r.m < p.dist - 4) continue;
+    for (const o of r.items) {
+      const dm = o.m - p.dist; o.fl -= dt;
+      if (o.type === 'dig' && dm * PX * DIR + FOOT < g.H) { const was = o.t; o.t += dt; if (was < o.pop && o.t >= o.pop) { sfx.beep(220, .12, 'square', p.human ? .07 : .03); burst(lx(p) + o.x, FOOT + dm * PX * DIR, 5, '#9b7653', 140); } }
+      const [hw, hh] = HB[o.type]; if (Math.abs(dm * PX) > hh + 10 || Math.abs(o.x - p.x) > hw + (o.type === 'arrow' ? 12 : 20)) continue;
+      if (o.type === 'arrow') { if (!o.used) { o.used = true; o.fl = .1; boost(p); } }
+      else if (o.type === 'flower') { onFl = true; if (!p.onFl) { p.lv = 0; p.bt = 0; if (p.human) sfx.tap(); } }
+      else if (o.type === 'log') { if (!o.used) { o.used = true; p.jfree = p.lv > 0; p.jump = p.jfree ? .3 : .45; if (!p.jfree) { p.lv = 0; p.bt = 0; } sfx.beep(p.jfree ? 1900 : 1500, .04, 'sine', p.human ? .05 : .02); } }
+      else if (o.type === 'rock' || o.t >= o.pop + .17) { if (p.inv <= 0 && p.fall <= 0) trip(p); } // 두더지는 반쯤 솟은 뒤부터 판정
+    }
+  }
+  p.onFl = onFl; if (onFl && Math.random() < 6 * dt) parts.push({ x: lx(p) + p.x + rand(-14, 14), y: FOOT + 2, vx: rand(-40, 40), vy: rand(-90, -30), life: .5, c: '#ff8ac9', r: 3 });
+  if (p.dist >= TRACK) { finishP(p); return true; }
+}
+
+g = Game({ id: 'togepi', title: '데굴데굴 플라밍고', howto: ['↓ 를 누른 채 달리고 ←→ 로 꽃·바위·통나무·두더지를 피하세요', '파란 화살표를 연속으로 밟으면 점점 빨라집니다', '골인 지점에 먼저 도착하면 승리!'], duration: 0,
+  init() {
+    const rows = makeCourse(), lv = g.humans >= 2 ? ['hard', 'hardm', 'hard', 'hard'] : ['normal', 'hard', 'hardm', 'hard']; let cpu = 0; // 1명: 보통·어려움·어려움− / 2명 이상: 어려움부터
+    P = slots().map(s => { const ai = s.human ? null : lv[cpu++]; return { ...s, x: 120, tx: 120, dist: 0, spd: 0, lv: 0, bt: 0, fall: 0, inv: 0, jump: 0, jfree: false, onFl: false, anim: rand(0, 9),
+      done: false, retired: false, ft: 0, rank: 0, tape: 0, ai, react: ai ? Math.max(.05, gauss(AI[ai].d[0], AI[ai].d[1])) : 0, row: 0, next: 0, pend: -1, wait: 0, plan: null, panic: 0, forced: false, hold: 0, tut: true,
+      course: rows.map(r => ({ ...r, items: r.items.map(o => ({ ...o, used: false, fl: 0, t: 0 })) })) }; });
+    parts = []; pops = []; caption = null; elapsed = 0; firstT = null; endT = null; warned = false;
+  },
+  update(dt) {
+    elapsed += dt;
+    const fresh = P.filter(p => !p.done && !p.retired && step(p, dt)); if (fresh.length) rankFinishers(fresh);
+    for (const q of parts) { q.vy += 600 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0);
+    for (const o of pops) { if (!o.big) o.y -= 50 * dt; o.life -= dt; } pops = pops.filter(o => o.life > 0);
+    for (const p of P) p.tape -= dt;
+    if (caption && (caption.life -= dt) <= 0) caption = null;
+    if (!warned && P.some(p => p.dist > 145)) { warned = true; say('골 앞에 두더지 떼가 기다려요!'); }
+    if (P.every(p => p.done || p.retired)) { if (endT == null) endT = elapsed + 1.2; if (elapsed >= endT) g.finish(); } // 마지막 골인 연출을 보여 준 뒤 종료
+    else if (firstT != null && elapsed >= retireAt()) { for (const p of P) if (!p.done) { p.retired = true; p.ft = elapsed; } say('시간 초과 — 리타이어'); sfx.bad(); }
+    if (elapsed > SAFETY) { for (const p of P) if (!p.done && !p.retired) { p.retired = true; p.ft = elapsed; } g.finish(); } // 절대 안전장치
+  },
+  draw(ctx) {
+    ctx.fillStyle = '#7cc24f'; ctx.fillRect(0, 0, g.W, g.H);
+    if (!P) return;
+    for (const p of P) drawLane(ctx, p);
+    rr(ctx, 0, 0, g.W, HUD, 0, palette.cream); ctx.fillStyle = 'rgba(58,36,48,.25)'; ctx.fillRect(0, HUD - 2, g.W, 2);
+    for (const p of P) drawHud(ctx, p);
+    for (const q of parts) { ctx.globalAlpha = clamp(q.life * 2, 0, 1); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 7); ctx.fill(); }
+    for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 3); text(ctx, o.s, o.x, o.y, 16, o.c); }
+    ctx.globalAlpha = 1;
+    if (caption) { ctx.globalAlpha = Math.min(1, caption.life); rr(ctx, g.W / 2 - 190, 7, 380, 30, 15, 'rgba(58,36,48,.9)'); text(ctx, caption.s, g.W / 2, 28, 17, palette.cream); ctx.globalAlpha = 1; }
+  },
+  result() { // 점수 = 완주 시간(낮을수록 좋음). 미완주 = 999 − 거리/1000 → 완주자보다 항상 뒤, 자기들끼리는 거리순
+    const w = P.find(p => p.rank === 1);
+    return { scores: P.map(p => p.done ? +p.ft.toFixed(3) : +(999 - p.dist / 1000).toFixed(3)), lowerIsBetter: true, text: w ? `1위 ${w.name} ${w.ft.toFixed(2)}초` : '완주자 없음' };
+  } });
+
+function drawLane(ctx, p) { // 잔디 벨트(줄무늬가 위로 흐름) · 흙 가장자리 · 골 · 고스트 · 소품(캐릭터 뒤→앞 순) · 캐릭터
+  const x0 = lx(p); ctx.save(); ctx.beginPath(); ctx.rect(x0, HUD, LANE, g.H - HUD); ctx.clip();
+  ctx.fillStyle = '#7cc24f'; ctx.fillRect(x0, HUD, LANE, g.H);
+  ctx.fillStyle = '#93d45f'; const off = ((-p.dist * PX * DIR) % 56 + 56) % 56; for (let y = HUD - 56 + off; y < g.H; y += 56) ctx.fillRect(x0 + 6, y, 228, 28);
+  ctx.fillStyle = '#b98b4e'; ctx.fillRect(x0, HUD, 6, g.H); ctx.fillRect(x0 + 234, HUD, 6, g.H);
+  ctx.globalAlpha = .4; ctx.fillStyle = p.color; ctx.fillRect(x0, HUD, 3, g.H); ctx.fillRect(x0 + 237, HUD, 3, g.H); ctx.globalAlpha = 1;
+  const gy = FOOT + (TRACK - p.dist) * PX * DIR;
+  if (gy > HUD - 60 && gy < g.H + 40) { // 골: 체크무늬 띠 + GOAL 팻말 + 플레이어색 테이프(골인 시 두 조각으로 날아감)
+    for (let k = 0; k < 10; k++) for (let j = 0; j < 2; j++) { ctx.fillStyle = (k + j) % 2 ? palette.ink : palette.white; ctx.fillRect(x0 + 20 + k * 20, gy - 12 + j * 12, 20, 12); }
+    rr(ctx, x0 + 80, gy - 44, 80, 26, 6, palette.white); text(ctx, 'GOAL', x0 + 120, gy - 25, 17, palette.ink);
+    ctx.strokeStyle = p.color; ctx.lineWidth = 4; ctx.beginPath();
+    if (!p.done) { ctx.moveTo(x0 + 20, gy - 2); ctx.lineTo(x0 + 220, gy - 2); }
+    else if (p.tape > 0) { const k = (.8 - p.tape) * 300; ctx.moveTo(x0 + 20 - k, gy - 2); ctx.lineTo(x0 + 110 - k, gy - 2 - k * .6); ctx.moveTo(x0 + 130 + k, gy - 2 - k * .6); ctx.lineTo(x0 + 220 + k, gy - 2); }
+    ctx.stroke();
+  }
+  for (const q of P) if (q !== p) { // 고스트: 다른 3명을 실제 진행도 차이만큼 어긋나게(앞서면 아래=카메라 쪽), 레인 밖이면 거리 마커
+    const y = FOOT + (q.dist - p.dist) * PX * DIR, near = Math.abs(q.dist - p.dist) < 3 && Math.abs(q.x - p.x) < 60; // 자기 캐릭터와 겹치는 고스트는 흐리게
+    if (y > HUD + 40 && y < g.H - 10) drawFlamingo(ctx, x0 + q.x, y - 27, .8, q.done ? 'idle' : 'run', g.time + q.i, q.color, { alpha: near ? .15 : .35 });
+  }
+  const vis = []; for (const r of p.course) for (const o of r.items) { o.sy = FOOT + (o.m - p.dist) * PX * DIR; if (o.sy > HUD - 60 && o.sy < g.H + 60) vis.push(o); }
+  for (const o of vis) if (o.sy < FOOT) drawItem(ctx, o, x0 + o.x, o.sy);
+  drawChar(ctx, p, x0 + p.x);
+  for (const o of vis) if (o.sy >= FOOT) drawItem(ctx, o, x0 + o.x, o.sy);
+  for (const q of P) if (q !== p) { const y = FOOT + (q.dist - p.dist) * PX * DIR, dd = Math.round(Math.abs(q.dist - p.dist)), mx = x0 + 45 + q.i * 50, my = y > FOOT ? g.H - 8 : HUD + 16; // 레인 밖 고스트 = 거리 마커(q.i별 고정 칸이라 겹치지 않음, 반투명 알약 위)
+    if (!(y > HUD + 40 && y < g.H - 10) && dd > 0) { rr(ctx, mx - 22, my - 12, 44, 16, 8, 'rgba(255,248,235,.6)'); text(ctx, `${q.dist > p.dist ? '▼' : '▲'}${dd}m`, mx, my, 12, q.color); } }
+  if (p.human && p.tut && g.state() === 'play' && elapsed < 5) { ctx.globalAlpha = .7; rr(ctx, x0 + 50, g.H - 66, 140, 26, 13, 'rgba(58,36,48,.78)'); text(ctx, '↓ 누른 채 달려요!', x0 + 120, g.H - 48, 15, palette.cream); ctx.globalAlpha = 1; } // 먼 앞쪽(화면 아래), ↓ 0.3 s 홀드 시 사라짐
+  if (p.retired) { ctx.fillStyle = 'rgba(70,70,70,.55)'; ctx.fillRect(x0, HUD, LANE, g.H); text(ctx, '리타이어', x0 + 120, 320, 30, palette.white); }
+  ctx.restore();
+}
+function drawItem(ctx, o, x, y) {
+  if (o.type === 'arrow') { rr(ctx, x - 32, y - 24, 64, 48, 8, o.fl > 0 ? palette.white : '#2f7dff'); ctx.fillStyle = o.fl > 0 ? '#2f7dff' : palette.white; ctx.fillRect(x - 7, y - 18, 14, 16); ctx.beginPath(); ctx.moveTo(x - 20, y - 4); ctx.lineTo(x + 20, y - 4); ctx.lineTo(x, y + 18); ctx.closePath(); ctx.fill(); }
+  else if (o.type === 'flower') { ctx.fillStyle = '#5fa63c'; ctx.beginPath(); ctx.arc(x, y, 22, 0, 7); ctx.fill(); ctx.fillStyle = '#ff8ac9'; for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(x + Math.cos(k * 1.047) * 13, y + Math.sin(k * 1.047) * 13, 7, 0, 7); ctx.fill(); } ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); }
+  else if (o.type === 'rock') { ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x + 3, y + 8, 26, 14, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#8f8f8f'; ctx.beginPath(); ctx.ellipse(x, y, 26, 20, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#b5b5b5'; ctx.beginPath(); ctx.ellipse(x - 7, y - 7, 10, 6, -.5, 0, 7); ctx.fill(); }
+  else if (o.type === 'log') { rr(ctx, x - 70, y - 15, 140, 30, 9, '#8b5a2b'); ctx.fillStyle = '#6e4520'; for (let k = -45; k <= 45; k += 30) ctx.fillRect(x + k - 2, y - 12, 4, 24); ctx.fillStyle = '#d9a066'; ctx.beginPath(); ctx.ellipse(x + 64, y, 9, 15, 0, 0, 7); ctx.fill(); ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x + 64, y, 5, 8, 0, 0, 7); ctx.stroke(); }
+  else { // 두더지: 숨어 있다가 0.4 s 전 흙더미가 떨리고, 0.35 s에 걸쳐 작은 갈색 플라밍고 머리가 솟는다
+    if (o.t < o.pop - .4) return;
+    const k = clamp((o.t - o.pop) / .35, 0, 1), sh = k < 1 ? rand(-2, 2) : 0;
+    if (k > 0) { ctx.save(); ctx.beginPath(); ctx.rect(x - 40, y - 60, 80, 62); ctx.clip(); drawFlamingo(ctx, x + sh, y + 14 - k * 30, .55, 'dig', g.time, '#9b7653'); ctx.restore(); }
+    ctx.fillStyle = '#7a5a3a'; ctx.beginPath(); ctx.ellipse(x + sh, y + 2, 15, 8, 0, 0, 7); ctx.fill();
+  }
+}
+function drawChar(ctx, p, X) { // 포즈: 주행 run · 부스트 fly(+흰 잔상 2개) · 통나무 jump · 전도 hit→dizzy(별 3개) · 골인 1위 jump 반복 · 리타이어 sleep · 무적 깜빡임
+  const st = g.state(); let pose = 'idle', Y = FOOT - 37;
+  if (p.retired) pose = 'sleep';
+  else if (p.done) { if (p.rank === 1) { pose = 'jump'; Y -= Math.abs(Math.sin(g.time * 5)) * 30; } }
+  else if (st === 'play' || st === 'end') {
+    if (p.fall > .6) { pose = 'hit'; Y -= 8; } else if (p.fall > 0) pose = 'dizzy';
+    else if (p.jump > 0) { pose = 'jump'; Y -= Math.sin(Math.PI * clamp(p.jump / (p.jfree ? .3 : .45), 0, 1)) * 28; }
+    else if (p.lv > 0) pose = 'fly'; else if (p.spd > .5) pose = 'run';
+  }
+  const at = pose === 'run' || pose === 'fly' ? p.anim : g.time + p.i;
+  ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(X, FOOT + 3, 22, 7, 0, 0, 7); ctx.fill();
+  if (pose === 'fly') { drawFlamingo(ctx, X, Y - 24, 1.1, 'fly', at, palette.white, { alpha: .25 }); drawFlamingo(ctx, X, Y - 12, 1.1, 'fly', at, palette.white, { alpha: .5 }); }
+  drawFlamingo(ctx, X, Y, 1.1, pose, at, p.color, { alpha: p.inv > 0 && (g.time * 20 | 0) % 2 ? .35 : 1 });
+  if (pose === 'dizzy') { ctx.fillStyle = palette.gold; for (let k = 0; k < 3; k++) { const a = g.time * 6 + k * 2.09; ctx.beginPath(); ctx.arc(X + Math.cos(a) * 18, Y - 46 + Math.sin(a) * 6, 4, 0, 7); ctx.fill(); } }
+}
+function drawHud(ctx, p) { // 배지 · 순위 · 개인 타이머 · 진행 바(0→200 m, 골 아이콘) · 부스트 ▶▶▶
+  const x0 = lx(p); drawPlayerTag(ctx, x0 + 42, 14, p.i);
+  if (p.done) { const k = p.tape > .55 ? lerp(1.8, 1, (.8 - p.tape) / .25) : 1; ctx.save(); ctx.translate(x0 + 142, 14); ctx.scale(k, k); rr(ctx, -22, -10, 44, 20, 10, p.rank === 1 ? palette.gold : 'rgba(58,36,48,.2)'); text(ctx, `${p.rank}위`, 0, 5, 13, palette.ink); ctx.restore(); } // 골인 순위 배지 팝업 0.8 s
+  else if (firstT != null && !p.retired && retireAt() - elapsed <= RETIRE) text(ctx, `-${Math.max(0, Math.ceil(retireAt() - elapsed))}s`, x0 + 142, 19, 13, palette.red, 'center'); // 리타이어까지 남은 시간(마지막 20 s만)
+  text(ctx, (p.done || p.retired ? p.ft : elapsed).toFixed(2), x0 + 232, 20, 16, p.retired ? 'rgba(58,36,48,.4)' : palette.ink, 'right');
+  rr(ctx, x0 + 12, 27, 150, 9, 4, 'rgba(58,36,48,.15)'); rr(ctx, x0 + 12, 27, 150 * clamp(p.dist / TRACK, 0, 1), 9, 4, p.color);
+  for (let j = 0; j < 2; j++) for (let k = 0; k < 2; k++) { ctx.fillStyle = (j + k) % 2 ? palette.ink : palette.white; ctx.fillRect(x0 + 164 + k * 5, 26 + j * 5, 5, 5); }
+  for (let k = 0; k < 3; k++) { ctx.fillStyle = k < p.lv ? '#2f7dff' : 'rgba(58,36,48,.15)'; ctx.beginPath(); ctx.moveTo(x0 + 182 + k * 16, 25); ctx.lineTo(x0 + 194 + k * 16, 31.5); ctx.lineTo(x0 + 182 + k * 16, 38); ctx.closePath(); ctx.fill(); }
+}
+</script></body></html>

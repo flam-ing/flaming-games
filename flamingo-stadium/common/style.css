@@ -1,0 +1,4 @@
+html,body{margin:0;height:100%;background:#3A2430;font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#FFF6EA}
+.wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;box-sizing:border-box}
+canvas{width:min(100vw - 32px,960px);aspect-ratio:16/9;background:#FFF6EA;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.4);image-rendering:auto}
+.bar{display:flex;gap:16px;align-items:center;font-size:14px;opacity:.85}.bar a{color:#FFC1DA}

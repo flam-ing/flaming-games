@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>통통볼 플라밍고 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: ←→↑↓ 꾹 눌러 그 칸으로 이동(떼면 중앙) · A 버튼으로 튀어올라 볼 치기</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, text, rr, rand, clamp, slots } = STADIUM;
+// 원작 Furret's Frolic (specs/furret.md §3~8): 십자(+) 5칸 구멍 필드에 볼이 떨어진다. 방향키 홀드 = 그 칸으로 잠수 이동(0.25s, 떼면 중앙 복귀), A = 튀어올라 머리로 bump(0.35s, 상승 0.15s만 판정)
+// 볼은 중앙 → 풀밭 → 둥지 두 번에 넣는다(둥지 주인이 득점). 60초, 몬/슈/하/마 = 1/2/3/5점. 월드 y를 0.7배로 눌러 3/4 시점(sy). 볼 물리: 체공 0.55s + 작은 바운드 1회 + 마찰 900(45초 이후 700), bump 속도는 목표(풀밭·둥지·중앙)에 멈추도록 역산 → 몬스터볼은 정확히 도달, 큰 볼은 무거워 짧게
+const K = 0.7, CX = 480, CY = 300, ARM = 190, GOAL = 295, GRAV = 1600, DIVE = 0.25, JUMP = 0.35, RISE = 0.15, REACH = 42, AIRT = 0.6875, MAXB = 6; // AIRT = bump 체공 0.55 + 착지 바운드 0.1375
+const sy = wy => CY + (wy - CY) * K;
+const ARMS = ['up', 'down', 'left', 'right'], DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }, ARROW = { up: '↑', down: '↓', left: '←', right: '→' };
+const CELL = { C: [CX, CY] }, GOALS = {}; ARMS.forEach(d => { CELL[d] = [CX + DIRS[d][0] * ARM, CY + DIRS[d][1] * ARM]; GOALS[d] = [CX + DIRS[d][0] * GOAL, CY + DIRS[d][1] * GOAL]; });
+const OWN = ['down', 'up', 'left', 'right'], HOME = OWN.map(d => [CX + DIRS[d][0] * 30, CY + DIRS[d][1] * 30]); // 1P 남 · 2P 북 · 3P 서 · 4P 동(§6). 중앙 칸 홈 = 네 자리 모두 자기 골 쪽 월드 30px(공정; 3/4 시점은 sy가 처리)
+const BALL = [{ r: 14, v: 1, k: 1, c: '#FF5A5F' }, { r: 18, v: 2, k: .9, c: '#3D7BFF' }, { r: 22, v: 3, k: .8, c: '#2B2B2B' }, { r: 32, v: 5, k: .7, c: '#9B6BFF' }]; // 몬스터·슈퍼·하이퍼·마스터 — 반경=판정, k=비거리(무게)
+const SCHED = [[15, 1.6, [1, 0, 0, 0]], [30, 1.4, [.55, .45, 0, 0]], [45, 1.2, [.35, .35, .3, 0]], [99, 1.0, [.25, .3, .3, .15]]]; // [~초, 낙하 간격 s, 종류 확률] (§5)
+const AI = { normal: { d: [.45, .15], acc: .72 * .85, def: 0, err: 18 }, hard: { d: [.24, .08], acc: .88 * .95, def: 1, err: 12 } }; // 반응 지연 [평균, σ]s · 성공률 = 타이밍 정확도 × (1 − 실수율) · err = 위치 오차 ±px (§8). 보통은 방어 없음(보강 18)
+const gauss = (m, s) => m + s * Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(Math.PI * 2 * Math.random());
+const HUDPOS = [[62, 458], [62, 62], [898, 62], [898, 458]]; // 1P 좌하 · 2P 좌상 · 3P 우상 · 4P 우하
+let g, P, cand = [], balls, parts, pops, caption, elapsed, spawnT, nb, lastSec;
+
+const wpos = (p, cell = p.cell) => cell === 'C' ? HOME[p.i] : CELL[cell];
+const dist = (a, b) => Math.hypot(a[0] - b.x, a[1] - b.y);
+const inReach = (pos, b) => b.st === 'live' && !(b.lock > 0) && b.z < 30 && dist(pos, b) <= REACH + BALL[b.k].r; // 머리 판정 42 + 볼 반경(큰 볼일수록 쉬움): 홈 30px에서 중앙 낙하 범위(±20) 전체에 닿는 최소값. 친 직후 0.15s 잠금(첫 타 우선)
+const cellOf = b => Object.keys(CELL).find(c => dist(CELL[c], b) < 80) || null;
+const pickKind = w => { let r = Math.random(); return Math.max(0, w.findIndex(q => (r -= q) <= 0)); };
+function say(s) { caption = { s, life: 2.4 }; }
+function pop(x, y, s, c, size = 24) { pops.push({ x, y, s, c, size, life: 0.7 }); }
+function dust(wx, wy, n, c = 'rgba(120,95,70,0.5)', up = 120) { for (let k = 0; k < n; k++) parts.push({ x: wx + rand(-10, 10), y: sy(wy), vx: rand(-90, 90), vy: rand(-up, -up * .2), life: rand(.3, .5), c, r: rand(2.5, 4.5), gr: 900 }); }
+function spawnBall(kind, cell, exact) { // 낙하 예고 0.8s(그림자 확대) 뒤 착지. 마스터볼은 등장 알림
+  const c = CELL[cell]; balls.push({ k: kind, x: c[0] + (exact ? 0 : rand(-20, 20)), y: c[1] + (exact ? 0 : rand(-20, 20)), z: 420, vx: 0, vy: 0, vz: 0, st: 'fall', t: 1.6, to: null, rt: 0, lock: 0, dr: Math.random() }); // t 1.6 = 그림자만 0.8s + 낙하 0.8s(§5)
+  if (kind === 3) { say('거대한 마스터볼 등장! 5점'); sfx.beep(1760, .18, 'sine', .07); }
+}
+function startMove(p, dest) { p.moveT = DIVE; p.from = p.cell; p.cell = dest; p.wait = -1; dust(...wpos(p, p.from), 4); }
+function jump(p) { p.jumpT = JUMP; p.hitDone = false; sfx.tap(); dust(...wpos(p), 5); }
+function bump(p, b) { b.lock = 0.15; b.owner = p; // 당구식 bump(보강 7/17): 머리→볼 오프셋이 방향을 정하고, 목표 지점에 딱 멈추도록 속도를 역산(무거운 볼은 ×k만큼 모자람)
+  p.hitDone = true; p.hitT = 0.15; sfx.hit(); const pp = wpos(p), e = p.human ? 0 : AI[p.lv].err, ox = b.x - pp[0] + rand(-e, e), oy = b.y - pp[1] + rand(-e, e); let to, tp;
+  if (p.cell === 'C') { const f = DIRS[p.own], lat = ox * f[1] - oy * f[0], sv = [f[1] * Math.sign(lat), -f[0] * Math.sign(lat)]; to = Math.abs(lat) > 20 ? ARMS.find(d => DIRS[d][0] === sv[0] && DIRS[d][1] === sv[1]) : p.own; tp = CELL[to]; } // 중앙: 정면=내 풀밭, 옆 20px 초과=옆 풀밭 (중앙→둥지 직행 불가)
+  else { const u = DIRS[p.cell], a = ox * u[0] + oy * u[1], l = Math.abs(ox * u[1] - oy * u[0]); to = Math.hypot(ox, oy) < 8 ? (p.cell === p.own ? 'goal' : 'C') : a >= l ? 'goal' : 'C'; tp = to === 'goal' ? GOALS[p.cell] : CELL.C; } // 풀밭: 바깥쪽 면을 치면 그 칸 주인 둥지로(남 풀밭이면 헌납), 안쪽·옆 면이면 중앙으로
+  const dx = tp[0] - b.x, dy = tp[1] - b.y, D = Math.hypot(dx, dy) || 1, F = elapsed > 45 ? 700 : 900, sp = F * (Math.sqrt(AIRT * AIRT + 2 * D / F) - AIRT) * BALL[b.k].k; // 체공 AIRT 동안 등속 + 굴림 v²/2F = D
+  b.vx = dx / D * sp; b.vy = dy / D * sp; b.vz = 440; b.z = Math.max(b.z, 0.5); b.to = to === 'goal' ? null : to; b.rt = 0;
+  if (to !== 'goal' && to !== p.own && p.cell === 'C') pop(b.x, sy(b.y) - 50, '옆으로!', palette.white, 18);
+  if (to === 'goal' && p.cell !== p.own) pop(b.x, sy(b.y) - 50, '헌납!', palette.red, 18);
+}
+function capture(b, dir) { // 둥지 위치의 주인이 득점(§4), 빨려들며 소멸 0.3s. 테두리 번쩍 + 점수판 확대 + eat 포즈
+  const p = P[OWN.indexOf(dir)], B = BALL[b.k], gp = GOALS[dir]; b.st = 'goal'; b.t = 0.3; b.gx = gp[0]; b.gy = gp[1];
+  p.score += B.v; p.pulse = 0.25; p.eat = 0.3; p.flashG = 0.35;
+  pop(gp[0], dir === 'up' ? sy(gp[1]) + 50 : sy(gp[1]) - 36, '+' + B.v, b.k === 3 ? palette.gold : '#FFF3A0', b.k === 3 ? 38 : 26);
+  if (b.k === 3) { sfx.win(); say(`${p.name} 마스터볼 골인! +5`); } else sfx.good();
+}
+function aiThink(p, dt) { // §8: 타깃 볼 → 반응 지연 → A. 내 풀밭에 있거나 오는 볼 우선, 다음 중앙에서 닿는 볼(큰 것부터), 어려움은 남의 풀밭의 하이퍼볼 이상을 중앙으로 쳐내는 방어
+  if (p.moveT > 0 || p.jumpT > 0 || p.stun > 0) return { dir: p.aiDir, a: false };
+  const a = AI[p.lv], hard = p.lv === 'hard', live = balls.filter(b => b.st === 'live' || (hard && b.st === 'fall' && b.t < 0.8)); let want = 'C', tgt = live.find(b => (b.z > 0 && b.st === 'live' ? b.to : cellOf(b)) === p.own); // 어려움은 그림자를 보고 미리 자리 잡음
+  if (tgt) want = p.own;
+  else { tgt = live.filter(b => inReach(HOME[p.i], b)).sort((x, y) => y.k - x.k)[0];
+    if (!tgt) { tgt = live.find(b => b.dr < a.def && b.k >= 2 && b.st === 'live' && b.z === 0 && ARMS.includes(cellOf(b)) && cellOf(b) !== p.own && !P.some(q => q !== p && q.cell === cellOf(b))); if (tgt) want = cellOf(tgt); } }
+  p.aiDir = want === 'C' ? null : want;
+  const near = tgt && (tgt.st === 'fall' ? dist(wpos(p), tgt) <= REACH + BALL[tgt.k].r : inReach(wpos(p), tgt));
+  if (want !== p.cell || !near) { p.wait = -1; return { dir: p.aiDir, a: false }; }
+  if (p.wait < 0) p.wait = Math.max(.05, gauss(a.d[0], a.d[1])) * (tgt.k === 3 && p.lv === 'hard' ? .5 : 1) * (want !== 'C' && want !== p.own ? 1.5 : 1); // 마스터볼엔 지연 절반, 방어는 ×1.5
+  if (tgt.st === 'fall') return { dir: p.aiDir, a: false }; p.wait -= dt; if (p.wait > 0) return { dir: p.aiDir, a: false }; // 반응 시계는 착지 후부터
+  if (hard && p.cell === p.own && dist(wpos(p), tgt) > 7) return { dir: p.aiDir, a: false }; // 어려움: 볼이 풀밭 한가운데 멈출 때까지 조준 대기
+  p.wait = -1; return { dir: p.aiDir, a: true };
+}
+function humanInput(p) { const k = g.p(p.i); return { dir: k.down(p.own) ? p.own : ARMS.find(d => k.down(d)) || null, a: k.hit('a') }; }
+function stepPlayer(p, dt) {
+  p.hitT -= dt; p.eat -= dt; p.pulse -= dt; p.flashG -= dt; p.stun -= dt;
+  if (p.moveT > 0) { p.moveT -= dt; if (p.moveT <= 0) { p.moveT = 0; dust(...wpos(p), 4); // 도착. 남의 자리에 먼저 있던 쪽은 밀려나 중앙으로(0.4s 경직, 보강 8)
+    if (p.cell !== 'C') for (const q of P) if (q !== p && q.cell === p.cell && q.moveT <= 0) { q.stun = 0.4; startMove(q, 'C'); sfx.bad(); pop(CELL[p.cell][0], sy(CELL[p.cell][1]) - 70, '밀려남!', palette.red, 20); } } }
+  if (p.jumpT > 0) { p.jumpT -= dt; if (!p.hitDone && !p.whiff && p.jumpT > JUMP - RISE) { const pos = wpos(p), b = balls.filter(b => inReach(pos, b)).sort((x, y) => y.k - x.k || dist(pos, x) - dist(pos, y))[0]; if (b) cand.push([p, b, dist(pos, b)]); } }
+  const inp = p.human ? humanInput(p) : aiThink(p, dt);
+  if (p.moveT > 0 || p.jumpT > 0 || p.stun > 0) return; // 잠수·점프·경직 중 입력 무시(공중 이동 없음)
+  const want = inp.dir || 'C';
+  if (want !== p.cell) startMove(p, p.cell === 'C' ? want : 'C'); // 팔→팔은 중앙을 거쳐 간다
+  else if (inp.a) { p.whiff = !p.human && Math.random() > AI[p.lv].acc; jump(p); } // CPU 실패 롤 = 헛점프
+}
+function stepBall(b, dt) {
+  if (b.st === 'fall') { b.t -= dt; b.z = clamp(b.t / 0.8, 0, 1) * 420; if (b.t <= 0) { b.st = 'live'; b.z = 0; b.vz = 280; sfx.pop(); dust(b.x, b.y, 5); } return; } // 착지 후 1회 바운드 25px(통통)
+  if (b.st === 'goal') { const q = Math.min(1, dt / b.t); b.x += (b.gx - b.x) * q; b.y += (b.gy - b.y) * q; b.z *= 1 - q; b.t -= dt; return; }
+  b.lock -= dt; b.z += b.vz * dt; b.vz -= GRAV * dt; if (b.z <= 0) { b.z = 0; b.vz = b.vz < -300 ? -b.vz * 0.25 : 0; } // bump 착지에만 작은 바운드(사거리 계산에 포함), 낙하 바운드는 1회
+  b.x += b.vx * dt; b.y += b.vy * dt;
+  if (b.x < 135 || b.x > 825) { b.x = clamp(b.x, 135, 825); b.vx *= -0.6; } if (b.y < -40 || b.y > 640) { b.y = clamp(b.y, -40, 640); b.vy *= -0.6; } // 경계 벽 탄성 0.6
+  const spd = Math.hypot(b.vx, b.vy);
+  if (b.z > 0 && spd > 100) parts.push({ x: b.x, y: sy(b.y) - b.z, vx: 0, vy: 0, life: .2, c: BALL[b.k].c, r: BALL[b.k].r * .5, gr: 0 }); // 잔상
+  else if (b.z === 0) {
+    if (spd > 40) { const f = Math.max(0, spd - (elapsed > 45 ? 700 : 900) * dt) / spd; b.vx *= f; b.vy *= f; }
+    else { b.vx = b.vy = 0; b.rt += dt; const c = Object.values(CELL).sort((u, v) => dist(u, b) - dist(v, b))[0], d = dist(c, b), lim = b.rt > 1.5 ? 0 : 5; // 멈추면 가장 가까운 구멍 칸 한가운데로 굴러 들어감(5px까지, 1.5초 넘게 방치되면 한가운데로 = 누구나 닿게)
+      if (d > lim) { const s = Math.min(d - lim, 120 * dt); b.x += (c[0] - b.x) / d * s; b.y += (c[1] - b.y) / d * s; }
+      const cl = cellOf(b); if (b.rt > 3 && ARMS.includes(cl) && !P.some(q => q.cell === cl)) { b.st = 'goal'; b.t = 0.3; b.gx = b.x; b.gy = b.y; dust(b.x, b.y, 6); sfx.pop(); } } // 아무도 없는 풀밭에 3초 방치 → 구멍으로 쏙 사라짐(득점 없음, 필드 막힘 방지)
+  }
+  if (b.k === 3 && Math.random() < .25) parts.push({ x: b.x + rand(-30, 30), y: sy(b.y) - b.z + rand(-30, 30), vx: 0, vy: -40, life: .4, c: palette.gold, r: 2, gr: 0 }); // 마스터볼 반짝
+  for (const d of ARMS) if (b.z < 90 && dist(GOALS[d], b) < 40) { capture(b, d); break; }
+}
+function hole(ctx, x, y, rx, ry) { ctx.fillStyle = '#4A3326'; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#2E1E15'; ctx.beginPath(); ctx.ellipse(x, y + 2, rx * .7, ry * .6, 0, 0, 7); ctx.fill(); }
+function nest(ctx, d) { const i = OWN.indexOf(d), gp = GOALS[d], x = gp[0]; let y = sy(gp[1]); const fl = P && P[i].flashG > 0; y = Math.min(y, 498); // 1P 둥지가 화면 밖으로 잘리지 않게
+  ctx.fillStyle = '#8C5A3C'; ctx.beginPath(); ctx.ellipse(x, y, 50, 36, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#5E3A22'; ctx.beginPath(); ctx.ellipse(x, y + 2, 36, 24, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = fl ? palette.white : palette.players[i]; ctx.lineWidth = fl ? 9 : 5; ctx.beginPath(); ctx.ellipse(x, y, 50, 36, 0, 0, 7); ctx.stroke(); }
+function drawField(ctx) {
+  ctx.fillStyle = '#6DBE62'; ctx.fillRect(0, 0, g.W, g.H);
+  ctx.fillStyle = 'rgba(0,0,0,0.07)'; for (let i = 0; i < 70; i++) { const x = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1 * 960, y = Math.abs(Math.sin(i * 78.233) * 43758.5453) % 1 * 540; ctx.beginPath(); ctx.ellipse(x, y, 9, 3, 0, 0, 7); ctx.fill(); }
+  nest(ctx, 'up');
+  rr(ctx, CX - ARM, CY - 30, ARM * 2, 60, 30, palette.sand); rr(ctx, CX - 30, sy(CY - ARM), 60, sy(CY + ARM) - sy(CY - ARM), 30, palette.sand); // 십자 모래길
+  ctx.fillStyle = palette.sand; ctx.beginPath(); ctx.ellipse(CX, CY, 150, 105, 0, 0, 7); ctx.fill();
+  ARMS.forEach(d => { const c = CELL[d], i = OWN.indexOf(d); ctx.fillStyle = palette.grass; ctx.beginPath(); ctx.ellipse(c[0], sy(c[1]), 62, 46, 0, 0, 7); ctx.fill(); ctx.strokeStyle = palette.players[i]; ctx.lineWidth = 3; ctx.stroke(); hole(ctx, c[0], sy(c[1]), 28, 17); });
+  HOME.forEach(h => hole(ctx, h[0], sy(h[1]), 22, 13));
+  ['left', 'right', 'down'].forEach(d => nest(ctx, d));
+}
+function drawBall(ctx, b) {
+  const B = BALL[b.k], s = b.st === 'goal' ? Math.max(.1, b.t / .3) : 1, r = B.r * s, x = b.x, y0 = sy(b.y), y = y0 - b.z;
+  const sw = b.st === 'fall' ? 4 + (1 - b.t / 1.6) * r * 1.3 : r * clamp(1 - b.z / 300, .5, 1); // 낙하 예고: 그림자가 1.6s 동안 커진다(앞 0.8s는 그림자만)
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y0 + 3, sw, sw * .5, 0, 0, 7); ctx.fill();
+  if (y < -40) return;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = palette.white; ctx.fill(); ctx.beginPath(); ctx.arc(x, y, r, Math.PI, 0); ctx.fillStyle = B.c; ctx.fill();
+  if (b.k === 1) { ctx.fillStyle = palette.red; [-.5, .5].forEach(o => { ctx.beginPath(); ctx.arc(x + o * r, y - r * .5, r * .18, 0, 7); ctx.fill(); }); }
+  if (b.k === 2) { ctx.strokeStyle = palette.gold; ctx.lineWidth = r * .16; [-.45, .45].forEach(o => { ctx.beginPath(); ctx.moveTo(x + o * r, y - r * .25); ctx.lineTo(x + o * r * 1.35, y - r * .8); ctx.stroke(); }); }
+  if (b.k === 3) { ctx.fillStyle = palette.pink; [-.55, .55].forEach(o => { ctx.beginPath(); ctx.arc(x + o * r, y - r * .5, r * .16, 0, 7); ctx.fill(); }); text(ctx, 'M', x, y - r * .25, r * .6, palette.white); }
+  ctx.strokeStyle = palette.beak; ctx.lineWidth = Math.max(1.5, r * .12); ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x + r, y); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+  ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(x, y, r * .3, 0, 7); ctx.fill(); ctx.stroke();
+}
+function divePos(p) { if (p.moveT <= 0) return [wpos(p), 1]; const q = 1 - p.moveT / DIVE; return q < .5 ? [wpos(p, p.from), 1 - q * 2] : [wpos(p), (q - .5) * 2]; } // 잠수: 출발 칸에서 가라앉고 도착 칸에서 솟는다
+function drawP(ctx, p, ended, max, min) {
+  const [pos, k] = divePos(p), x = pos[0], y = sy(pos[1]), jy = p.jumpT > 0 ? Math.sin(Math.PI * (1 - p.jumpT / JUMP)) * 46 : 0;
+  let pose = p.stun > 0 ? 'dizzy' : p.hitT > 0 ? 'hit' : p.jumpT > 0 ? 'jump' : p.eat > 0 ? 'eat' : p.moveT > 0 ? 'run' : 'idle', fy = y - 39 - jy;
+  if (ended) { pose = p.score === max ? 'fly' : p.score === min && max > min ? 'sleep' : 'idle'; if (pose === 'fly') fy -= 30 + Math.sin(g.time * 4) * 10; } // 결과: 1위(공동 포함) 날고 꼴찌는 잠
+  if (jy > 0) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + 4, 22 - jy * .15, 8, 0, 0, 7); ctx.fill(); }
+  ctx.save(); ctx.translate(x, y); ctx.scale(1, Math.max(.04, k)); drawFlamingo(ctx, 0, fy - y, 1.0, pose, g.time + p.i, p.color, { flip: p.own === 'left' }); ctx.restore();
+  p.tag = k > .5 ? [x + DIRS[p.own][0] * 22, Math.max(64, fy - 60)] : null;
+  if (p.human && !ended && elapsed < 12 && p.score === 0 && g.state() === 'play') { // 초반 안내: 닿는 볼이 있으면 A, 내 풀밭으로 볼이 가면 방향키 꾹
+    const own = balls.some(b => b.st === 'live' && (b.z > 0 ? b.to : cellOf(b)) === p.own), near = balls.some(b => inReach(wpos(p), b));
+    const h = near ? 'A 버튼!' : own && p.cell !== p.own ? ARROW[p.own] + ' 꾹!' : ''; if (h) { const [hx, hy] = HUDPOS[p.i]; rr(ctx, hx + (hx < 480 ? 50 : -130), hy + 26, 80, 30, 12, palette.cream); text(ctx, h, hx + (hx < 480 ? 90 : -90), hy + 47, 16, palette.pinkDark); } } // 안내는 내 HUD 옆(무리 위 겹침 방지)
+}
+function drawHUD(ctx, ended, max) {
+  const lead = P.filter(p => p.score === max);
+  for (const p of P) { const [hx, hy] = HUDPOS[p.i]; rr(ctx, hx - 44, hy - 16, 88, 96, 12, 'rgba(58,36,48,0.5)'); drawPlayerTag(ctx, hx, hy, p.i);
+    const k = 1 + Math.max(0, p.pulse) * 1.5; ctx.save(); ctx.translate(hx, hy + 42); ctx.scale(k, k); text(ctx, String(p.score), 0, 12, 34, p.color); ctx.restore();
+    if (max > 0 && lead.length === 1 && lead[0] === p) text(ctx, '선두', hx, hy + 74, 13, palette.gold); }
+  const tl = g.timeLeft, urgent = tl <= 10 && !ended && g.state() === 'play'; rr(ctx, 436, 8, 88, 46, 12, 'rgba(58,36,48,0.5)'); // 상단 중앙 큰 타이머, 마지막 10초 빨강 점멸
+  if (!urgent || Math.floor(g.time * 4) % 2 === 0) text(ctx, ended ? '끝!' : String(Math.ceil(tl)), 480, 44, 34, urgent ? palette.red : palette.cream);
+  if (caption) { ctx.globalAlpha = Math.min(1, caption.life); rr(ctx, 130, 14, 296, 32, 16, 'rgba(58,36,48,0.7)'); text(ctx, caption.s, 278, 36, 16, palette.cream); ctx.globalAlpha = 1; }
+}
+
+g = Game({ id: 'furret', title: '통통볼 플라밍고', howto: ['A 버튼으로 튀어올라 떨어진 볼을 머리로 쳐요', '내 둥지 쪽 방향키를 꾹 눌러 풀밭으로 따라가 한 번 더! (떼면 중앙)', '큰 볼일수록 고득점 1·2·3·5점 · 60초 안에 내 둥지에 많이 넣기'], duration: 60,
+  init() { // 항상 4마리. CPU 난이도: 2P 보통 · 3P 보통/어려움 50:50 · 4P 어려움
+    P = slots().map((s, i) => ({ ...s, own: OWN[i], cell: 'C', from: 'C', moveT: 0, jumpT: 0, hitT: 0, eat: 0, stun: 0, pulse: 0, flashG: 0, score: 0, whiff: false, hitDone: true, wait: -1, aiDir: null, lv: i === 3 || (i === 2 && Math.random() < .5) ? 'hard' : 'normal' }));
+    balls = []; parts = []; pops = []; caption = null; elapsed = 0; spawnT = 0.5; nb = 0; lastSec = 99;
+  },
+  update(dt) {
+    elapsed += dt; if (elapsed > 66) g.finish(); // 안전장치(셸 타이머가 60초에 끝냄)
+    const sc = SCHED.find(s => elapsed < s[0]); spawnT -= dt;
+    if (spawnT <= 0 && balls.filter(b => b.st !== 'goal').length < MAXB) { spawnT = sc[1]; const r = Math.random(); spawnBall(nb ? pickKind(sc[2]) : 0, !nb || r < .5 ? 'C' : ARMS[Math.floor((r - .5) * 8)], !nb); nb++; } // 중앙 50% · 팔 12.5%씩, 첫 볼은 정중앙
+    for (const b of balls) stepBall(b, dt); balls = balls.filter(b => b.st !== 'goal' || b.t > 0);
+    cand = []; for (const p of P) stepPlayer(p, dt);
+    cand.sort((u, v) => u[2] - v[2]); for (const [p, b] of cand) if (!p.hitDone && !(b.lock > 0)) bump(p, b); // 같은 프레임 경합: 볼 중심에 가까운 쪽이 첫 타
+    for (const q of parts) { q.vy += q.gr * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0);
+    for (const o of pops) { o.y -= 50 * dt; o.life -= dt; } pops = pops.filter(o => o.life > 0);
+    if (caption) { caption.life -= dt; if (caption.life <= 0) caption = null; }
+    const s = Math.ceil(g.timeLeft); if (s !== lastSec) { lastSec = s; if (s <= 10 && s > 0) sfx.tick(); if (s === 10) say('마지막 10초!'); }
+  },
+  draw(ctx) {
+    drawField(ctx); if (!P) return;
+    const ended = g.state() === 'end', max = Math.max(...P.map(p => p.score)), min = Math.min(...P.map(p => p.score));
+    const ents = [...balls.map(b => ({ y: sy(b.y), b })), ...P.map(p => ({ y: sy(divePos(p)[0][1]) + 1, p }))].sort((u, v) => u.y - v.y); // 화면 y 순으로 겹침 정리
+    for (const e of ents) e.b ? drawBall(ctx, e.b) : drawP(ctx, e.p, ended, max, min);
+    for (const b of balls) if (b.st === 'live' && b.z < 30) { ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, sy(b.y) - b.z, BALL[b.k].r + 3, 0, 7); ctx.stroke(); } // 새에 가려진 볼 윤곽
+    for (const p of P) if (p.tag) drawPlayerTag(ctx, p.tag[0], p.tag[1], p.i); // 태그는 새 전부 그린 뒤 한 번에
+    for (const q of parts) { ctx.globalAlpha = clamp(q.life * 2.5, 0, 1); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1; drawHUD(ctx, ended, max);
+    if (ended || (g.state() === 'play' && g.timeLeft < 0.6)) { rr(ctx, 380, 230, 200, 90, 24, 'rgba(58,36,48,0.75)'); text(ctx, '끝!', 480, 294, 60, palette.gold); } // 종료 순간 큰 '끝!'(§7)
+    for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 2); text(ctx, o.s, o.x, o.y, o.size, palette.ink); text(ctx, o.s, o.x, o.y - 1.5, o.size, o.c); } ctx.globalAlpha = 1;
+  },
+  result() { // 동점은 같은 점수를 그대로 넘겨 셸이 공동 순위로 처리 (원작 동점 퀴즈 대신)
+    const max = Math.max(...P.map(p => p.score)), w = P.filter(p => p.score === max).map(p => p.name);
+    return { scores: P.map(p => p.score), text: `${w.length > 1 ? '공동 승자' : '승자'} ${w.join('·')} — 둥지에 ${max}점!` };
+  } });
+</script></body></html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>번개 발전기 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: 램프가 파랑이면 A 연타 · 초록이면 B 연타</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, text, rr, rand, clamp, lerp, slots } = STADIUM;
+// ---- 튜닝 상수 (specs/dynamo.md §3~§8, §12) ----
+const W = 960, H = 540, FULL = 100, DRAIN = 4, CAP = 0.066, HOLDS = [1, 1.5, 2], BLINK = 0.07, LIGHT_AT = 0.3, SAFETY = 30;
+const GAIN = { human: 2.5, cpu: 2.0 };              // 정답 1회 충전량 (사람은 키보드 연타 보정, §11-13)
+const TIERS = { normal: { delay: [0.20, 0.35], rate: [9.0, 10] } }, MIX = ['normal', 'normal', 'normal'], DSPREAD = [[0.20, 0.25], [0.25, 0.30], [0.30, 0.35]]; // Normal 연타 9~10회/초(§5·§8), 지연은 셋이 서로 다르게(§12-7). 정답 +2.0%(§4)에서 §12-8 페이스를 맞추려 지연을 Normal 하한 아래로 당김(§13)
+const LAMP = { blue: '#3A7BFF', green: '#3FD35A', off: '#101010' }, YEL = '#F2C500';
+const PX = [0.17, 0.39, 0.61, 0.83].map(k => W * k), PY = 421, GX = W / 2, GY = H * 0.42, BULB = GY - 150, FLOOR = 250;
+const WX = i => GX + (i - 1.5) * 44, WY = GY + 50; // 전선이 발전기에 닿는 점
+let g, P, color, lit, hold, blink, elapsed, phase, endT, full, sparks, wires, popups, msg;
+
+function setup() {
+  color = Math.random() < 0.5 ? 'blue' : 'green'; lit = false; hold = HOLDS[rand(0, 3) | 0]; blink = 0; elapsed = 0; phase = 'wait'; endT = 0; full = true;
+  sparks = []; wires = []; popups = []; msg = { s: '파랑은 A, 초록은 B!', t: 2.5 };
+  const mix = MIX.slice(); let cpuN = 0; const ds = DSPREAD.slice().sort(() => Math.random() - 0.5);
+  P = slots().map((s, i) => {
+    const p = { ...s, x: PX[i], charge: 0, ball: Math.random() < 0.5, flip: i >= 2, mash: 0, pr: 0, dizzy: 0, red: 0, jumpT: 0, rot: 0, last: -1, errs: 0, milestone: 0, win: false, seen: null, reactAt: 1e9, cd: 0 };
+    if (!s.human) { const t = TIERS[mix.pop()]; p.delay = rand(...ds[cpuN++ % ds.length]); p.rate = rand(...t.rate); }
+    return p;
+  });
+}
+const react = p => { if (!p.human) p.reactAt = elapsed + p.delay * rand(0.85, 1.15); };
+function light() { lit = true; sfx.beep(880, 0.12, 'sine', 0.06); P.forEach(react); } // GO 0.3초 뒤 첫 점등. sfx.go는 셸이 GO에 이미 재생 → 구분되는 beep (§13 편차)
+function switchLamp() { // 0.07초 소등 후 반대색 (5%는 같은 색 재점등). 소등 중 입력은 새 색 기준
+  color = Math.random() < 0.05 ? color : color === 'blue' ? 'green' : 'blue'; blink = BLINK; hold = HOLDS[rand(0, 3) | 0]; sfx.tick();
+  P.forEach(p => { p.errs = 0; react(p); });
+}
+function spark(x, y, c, n, up) { for (let k = 0; k < n; k++) sparks.push({ x, y, vx: rand(-140, 140), vy: up ? rand(-260, -80) : rand(40, 160), life: rand(0.3, 0.55), c }); }
+function press(p, btn) {
+  if (phase !== 'race' || elapsed - p.last < CAP) return; // 연타 상한 15회/초
+  p.last = elapsed; p.mash = 0.3; p.pr += 1;
+  const ok = (btn === 'a') === (color === 'blue');
+  if (ok) {
+    p.charge = Math.min(FULL, p.charge + (p.human ? GAIN.human : GAIN.cpu)); spark(p.x + (p.flip ? -50 : 50), PY - 48, LAMP[color], 5, true); wires.push({ p, k: 0, c: LAMP[color] });
+    if (p.human) sfx.tap();
+    const m = Math.floor(p.charge / 25); if (m > p.milestone && p.charge < FULL) { p.milestone = m; p.jumpT = 0.35; if (p.human) sfx.pop(); }
+  } else {
+    p.charge = Math.max(0, p.charge - DRAIN); p.dizzy = 0.3; p.red = 0.2; p.errs++; spark(p.x, PY, '#9A9A9A', 5, false);
+    popups.push({ s: '찌릿!', x: p.x + (p.i === 1 ? -70 : p.i === 2 ? 70 : 0), y: PY - 100, life: 0.5 }); // 머리 위, 안쪽 레인은 바깥으로 비켜 램프 안내와 안 겹치게
+    if (p.human) { sfx.bad(); if (p.errs === 3) msg = { s: '색을 잘 봐!', t: 1.2 }; }
+  }
+}
+const sc = p => p.win ? Math.round(p.charge) : Math.min(99, Math.floor(p.charge)); // 승자만 100 (§4)
+function endGame(ws, isFull) { phase = 'end'; endT = 0; lit = false; full = isFull; popups = []; msg.t = 0; ws.forEach(p => { p.win = true; if (isFull) p.charge = FULL; }); }
+
+// ---- 그리기 헬퍼 ----
+function outlined(ctx, s, x, y, size, fill, stroke = palette.white) { ctx.save(); ctx.font = `bold ${size}px sans-serif`; ctx.textAlign = 'center'; ctx.lineJoin = 'round'; ctx.lineWidth = size / 6; ctx.strokeStyle = stroke; ctx.strokeText(s, x, y); ctx.fillStyle = fill; ctx.fillText(s, x, y); ctx.restore(); }
+function stripes(ctx, x, y, w, h, s) { // 검정 바탕 + 노랑 사선 경고띠
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.fillStyle = '#151515'; ctx.fillRect(x, y, w, h); ctx.fillStyle = YEL;
+  for (let k = -h; k < w + h; k += s * 2) { ctx.beginPath(); ctx.moveTo(x + k, y); ctx.lineTo(x + k + s, y); ctx.lineTo(x + k + s - h, y + h); ctx.lineTo(x + k - h, y + h); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+}
+function zap(ctx, x, y, s, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x + 4 * s, y - 14 * s); ctx.lineTo(x - 6 * s, y + 2 * s); ctx.lineTo(x + s, y + 2 * s); ctx.lineTo(x - 4 * s, y + 14 * s); ctx.lineTo(x + 6 * s, y - 2 * s); ctx.lineTo(x - s, y - 2 * s); ctx.closePath(); ctx.fill(); }
+function bolt(ctx, x0, y0, x1, y1, w, c) { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(x0, y0); for (let k = 1; k < 7; k++) { const t = k / 7; ctx.lineTo(x0 + (x1 - x0) * t + rand(-22, 22), y0 + (y1 - y0) * t + rand(-8, 8)); } ctx.lineTo(x1, y1); ctx.stroke(); }
+
+g = Game({ id: 'dynamo', title: '번개 발전기', duration: 0,
+  howto: ['램프가 파랑이면 A 버튼, 초록이면 B 버튼을 연타!', '틀린 버튼을 누르면 모아둔 전기가 새어 나가요', '게이지를 가장 먼저 100% 채우면 승리 · 진 쪽은 감전!'],
+  init() { setup(); },
+  update(dt) {
+    elapsed += dt;
+    if (phase === 'wait' && elapsed >= LIGHT_AT) { phase = 'race'; light(); }
+    if (phase === 'race') {
+      if (blink > 0) blink -= dt; hold -= dt; if (hold <= 0) switchLamp();
+      P.forEach((p, i) => {
+        if (p.human) { const k = g.p(i), a = k.hit('a'), b = k.hit('b'); if (a && b) press(p, color === 'blue' ? 'b' : 'a'); else if (a || b) press(p, a ? 'a' : 'b'); }
+        else { // CPU: 지연 후 색 인지 → 인지한 색으로 일정 주기 연타 (지연 중엔 옛 색을 계속 눌러 관성 오입력). 연타 상한에 걸리면 타이머를 소모하지 않아 저프레임에서도 평균 속도 유지
+          if (elapsed >= p.reactAt) p.seen = color;
+          if (p.seen) { p.cd -= dt; if (p.cd <= 0 && elapsed - p.last >= CAP) { press(p, p.seen === 'blue' ? 'a' : 'b'); p.cd += rand(0.85, 1.15) / p.rate; } }
+        }
+      });
+      const ws = P.filter(p => p.charge >= FULL);
+      if (ws.length) endGame(ws, true);
+      else if (elapsed > SAFETY) { const top = Math.max(...P.map(p => p.charge)); endGame(top > 0 ? P.filter(p => p.charge === top) : [], false); }
+    } else if (phase === 'end') { // 0.5초 정지 → 2초 감전 → 1.5초 dizzy+배너 → finish
+      const was = endT; endT += dt;
+      if (was < 0.5 && endT >= 0.5) { sfx.hit(); sfx.beep(90, 0.6, 'sawtooth', 0.05); }
+      if (endT >= 4) g.finish();
+    }
+    if (elapsed > SAFETY + 8) g.finish();
+    P.forEach(p => { p.mash = Math.max(0, p.mash - dt); p.dizzy = Math.max(0, p.dizzy - dt); p.red = Math.max(0, p.red - dt); p.jumpT = Math.max(0, p.jumpT - dt); p.pr *= Math.exp(-dt * 2); if (p.mash > 0 && p.ball) p.rot += 12 * p.pr * 2 * dt; }); // pr: 감쇠 누적 → ×2 ≈ 최근 연타 속도(회/초), rot += rate×12 (§1)
+    sparks.forEach(s => { s.life -= dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 600 * dt; }); sparks = sparks.filter(s => s.life > 0);
+    wires.forEach(w => w.k += 2.5 * dt); wires = wires.filter(w => w.k < 1);
+    popups.forEach(o => { o.life -= dt; o.y -= 40 * dt; }); popups = popups.filter(o => o.life > 0);
+    if (msg.t > 0) msg.t -= dt;
+  },
+  draw(ctx) {
+    const t = g.time, lampC = lit && blink <= 0 ? LAMP[color] : LAMP.off, shock = phase === 'end' && endT >= 0.5 && endT < 2.5;
+    // 벽(세이지 그린 체크) + 물결 경고띠 + 금속 바닥
+    ctx.fillStyle = '#9DB58A'; ctx.fillRect(0, 0, W, FLOOR); ctx.fillStyle = '#6F8F63';
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 20; c++) if ((r + c) % 2 === 0) ctx.fillRect(c * 48 + 4, r * 50 + 4, 40, 42);
+    ctx.save(); ctx.beginPath(); for (let x = 0; x <= W; x += 20) ctx.lineTo(x, 135 + Math.sin(x / 90 + 1) * 8); for (let x = W; x >= 0; x -= 20) ctx.lineTo(x, 178 + Math.sin(x / 90 + 1) * 8); ctx.closePath(); ctx.clip(); stripes(ctx, 0, 120, W, 80, 22); ctx.restore();
+    ctx.fillStyle = '#8C8F93'; ctx.fillRect(0, FLOOR, W, H - FLOOR); ctx.strokeStyle = '#6E7175'; ctx.lineWidth = 2;
+    [6, 20, 42, 74, 118, 176, 250].forEach(d => { ctx.beginPath(); ctx.moveTo(0, FLOOR + d); ctx.lineTo(W, FLOOR + d); ctx.stroke(); });
+    for (let k = -6; k <= 6; k++) { ctx.beginPath(); ctx.moveTo(GX + k * 30, FLOOR); ctx.lineTo(GX + k * 150, H); ctx.stroke(); }
+    if (lit) { const gl = ctx.createRadialGradient(GX, FLOOR + 40, 10, GX, FLOOR + 40, 220); gl.addColorStop(0, lampC + '44'); gl.addColorStop(1, lampC + '00'); ctx.fillStyle = gl; ctx.fillRect(0, FLOOR, W, 200); }
+    // 전선 (플레이어 색, 연타 중 굵고 밝게) + 흐르는 스파크
+    P.forEach((p, i) => { ctx.strokeStyle = p.color; ctx.lineWidth = p.mash > 0 ? 6 : 3; ctx.globalAlpha = p.mash > 0 ? 1 : 0.7; ctx.beginPath(); ctx.moveTo(p.x, PY + 46); ctx.lineTo(WX(i), WY); ctx.stroke(); }); ctx.globalAlpha = 1;
+    wires.forEach(w => { ctx.fillStyle = w.c; ctx.beginPath(); ctx.arc(lerp(w.p.x, WX(w.p.i), w.k), lerp(PY + 46, WY, w.k), 4, 0, 7); ctx.fill(); });
+    // 발전기: 양옆 경고띠, 코일+보라 원반+전구, 은색 캡슐, 통풍구, 계기판 2개, 큰 램프
+    stripes(ctx, GX - 202, GY - 36, 58, 72, 14); stripes(ctx, GX + 144, GY - 36, 58, 72, 14);
+    ctx.strokeStyle = palette.pink; ctx.lineWidth = 5; ctx.beginPath(); for (let y = GY - 54; y >= BULB + 14; y -= 3) ctx.lineTo(GX + Math.sin(y * 0.7) * 16, y); ctx.stroke();
+    [[GY - 72, 56], [GY - 98, 44], [GY - 124, 32]].forEach(([y, r]) => { ctx.fillStyle = palette.purple; ctx.beginPath(); ctx.ellipse(GX, y, r, 9, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#9A6BF0'; ctx.beginPath(); ctx.ellipse(GX, y + 3, r, 6, 0, 0, Math.PI); ctx.fill(); });
+    const glow = shock ? 1 : lit ? 0.5 + Math.sin(t * 10) * 0.1 : 0.15;
+    ctx.fillStyle = `rgba(255,209,102,${glow * 0.5})`; ctx.beginPath(); ctx.arc(GX, BULB, 34, 0, 7); ctx.fill(); ctx.fillStyle = palette.gold; ctx.beginPath(); ctx.arc(GX, BULB, 15, 0, 7); ctx.fill(); rr(ctx, GX - 8, BULB + 12, 16, 10, 3, '#777');
+    rr(ctx, GX - 144, GY - 54, 288, 108, 44, '#C9CDD3'); rr(ctx, GX - 132, GY - 46, 264, 26, 20, '#E6E9ED'); rr(ctx, GX - 140, GY + 32, 280, 20, 10, '#9DA3AA');
+    rr(ctx, GX - 70, GY - 44, 140, 22, 4, '#1E1E1E'); ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5; for (let x = GX - 60; x < GX + 70; x += 10) { ctx.beginPath(); ctx.moveTo(x, GY - 42); ctx.lineTo(x, GY - 24); ctx.stroke(); }
+    [GX - 98, GX - 48].forEach((x, k) => {
+      ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(x, GY + 6, 19, 0, 7); ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.stroke();
+      const v = k ? Math.max(...P.map(p => p.charge)) : P.reduce((s, p) => s + p.charge, 0) / 4, ang = -2.4 + v / FULL * 2.6; // 왼쪽 계기: 평균 / 오른쪽: 선두
+      ctx.strokeStyle = palette.red; ctx.beginPath(); ctx.moveTo(x, GY + 6); ctx.lineTo(x + Math.cos(ang) * 14, GY + 6 + Math.sin(ang) * 14); ctx.stroke();
+    });
+    if (lit && blink <= 0) { const gl = ctx.createRadialGradient(GX + 86, GY + 4, 20, GX + 86, GY + 4, 95); gl.addColorStop(0, lampC + '99'); gl.addColorStop(1, lampC + '00'); ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(GX + 86, GY + 4, 95, 0, 7); ctx.fill(); }
+    ctx.fillStyle = '#2A2A2A'; ctx.beginPath(); ctx.arc(GX + 86, GY + 4, 37, 0, 7); ctx.fill(); ctx.fillStyle = lampC; ctx.beginPath(); ctx.arc(GX + 86, GY + 4, 32, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.arc(GX + 76, GY - 8, 10, 0, 7); ctx.fill();
+    // 램프 안내 (전환 즉시 새 색으로)
+    if (lit) outlined(ctx, color === 'blue' ? '파랑 = A 버튼' : '초록 = B 버튼', GX, GY + 100, 48, LAMP[color]);
+    else if (phase !== 'end' && ['play', 'count'].includes(g.state())) outlined(ctx, '램프가 켜지면 연타 시작!', GX, GY + 106, 26, '#666');
+    if (shock) { ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.25})`; ctx.fillRect(0, 0, W, H); }
+    // 플레이어 4명: 발판, 플라밍고, 배지, 게이지
+    P.forEach((p, i) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(p.x + 6, PY + 52, 66, 18, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = YEL; ctx.beginPath(); ctx.ellipse(p.x, PY + 46, 64, 18, 0, 0, 7); ctx.fill();
+      ctx.save(); ctx.setLineDash([12, 10]); ctx.strokeStyle = '#111'; ctx.lineWidth = 6; ctx.beginPath(); ctx.ellipse(p.x, PY + 46, 64, 18, 0, 0, 7); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = '#5DBF62'; ctx.beginPath(); ctx.ellipse(p.x, PY + 46, 48, 11, 0, 0, 7); ctx.fill();
+      let pose = 'idle', dy = 0, rot = 0, col = p.color, shake = 0;
+      if (phase === 'end') {
+        if (p.win) { pose = endT < 0.5 ? 'fly' : 'jump'; dy = endT < 0.5 ? -endT * 40 : -20 - Math.abs(Math.sin(t * 6)) * 24; }
+        else if (shock) { pose = 'hit'; col = '#151515'; shake = 4; }
+        else if (endT >= 2.5) { pose = 'dizzy'; dy = 8; }
+      } else {
+        if (p.jumpT > 0) dy = -Math.sin(Math.PI * (1 - p.jumpT / 0.35)) * 22;
+        if (p.dizzy > 0) pose = 'dizzy';
+        else if (p.mash > 0 && p.ball) { pose = 'ball'; rot = p.rot; }
+        else if (p.jumpT > 0) pose = 'jump';
+        else if (p.mash > 0) { pose = 'run'; shake = 3; }
+      }
+      const sx = shake ? rand(-shake, shake) : 0, sy = shake ? rand(-shake, shake) : 0;
+      if (pose === 'ball') { ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.arc(p.x, PY + dy, 34, 0, 7); ctx.fill(); }
+      drawFlamingo(ctx, p.x + sx, PY + dy + sy, 1.4, pose, t + i, col, { flip: p.flip, rot });
+      if (pose === 'run' && Math.random() < 0.7) zap(ctx, p.x + (p.flip ? -50 : 50), PY - 48 + dy, 0.7, LAMP[color]);
+      if (phase === 'end' && p.win) zap(ctx, p.x, PY + dy - 82 + Math.sin(t * 5) * 4, 1.6, palette.gold);
+      drawPlayerTag(ctx, p.x, PY + 54, i);
+      const gx = p.x - 72, gy = PY + 70; // 게이지: 파랑 바탕 + 노랑 채움, 어두운 프레임
+      ctx.fillStyle = '#3A3A3A'; ctx.fillRect(gx - 3, gy - 3, 150, 20); ctx.fillStyle = p.red > 0 ? palette.red : '#2F62D6'; ctx.fillRect(gx, gy, 144, 14);
+      ctx.fillStyle = p.red > 0 ? '#FFB3B3' : YEL; ctx.fillRect(gx, gy, 144 * p.charge / FULL, 14);
+      text(ctx, `${sc(p)}%`, gx + 152, gy + 12, 14, palette.ink, 'left');
+    });
+    if (shock) P.forEach(p => { if (!p.win) { bolt(ctx, GX, BULB, p.x, PY - 48, 12, YEL); bolt(ctx, GX, BULB, p.x, PY - 48, 4, palette.white); } });
+    sparks.forEach(s => { ctx.globalAlpha = clamp(s.life * 2.5, 0, 1); ctx.fillStyle = s.c; ctx.beginPath(); ctx.arc(s.x, s.y, 3.5, 0, 7); ctx.fill(); }); ctx.globalAlpha = 1;
+    popups.forEach(o => { ctx.globalAlpha = clamp(o.life * 2, 0, 1); outlined(ctx, o.s, o.x, o.y, 26, palette.red); }); ctx.globalAlpha = 1;
+    // HUD + 아나운서 + 종료 배너
+    text(ctx, '먼저 100% 채우면 승리!', 16, 30, 16, palette.ink, 'left');
+    if (msg.t > 0 && ['play', 'count'].includes(g.state())) { ctx.globalAlpha = clamp(msg.t * 2, 0, 1); outlined(ctx, msg.s, GX, 40, 26, palette.white, palette.ink); ctx.globalAlpha = 1; }
+    if (phase === 'end' && endT >= 2.5 && g.state() === 'play') { const names = P.filter(p => p.win).map(p => p.name).join('·'); rr(ctx, GX - 250, 50, 500, 80, 20, 'rgba(58,36,48,0.8)'); outlined(ctx, `⚡ ${names} ${full ? '만충전' : '최다 충전'}!`, GX, 106, 44, palette.gold, palette.ink); }
+  },
+  result() { const names = P.filter(p => p.win).map(p => p.name).join('·'); return { scores: P.map(sc), text: names ? `⚡ ${names} ${full ? '만충전' : '최다 충전'}!` : '무승부' }; } });
+</script></body></html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f5f0df">
+<meta name="description" content="한 키보드로 최대 4명이 함께하는 플라밍고 운동회. 21가지 미니게임과 새롭게 만나는 3D 스플래시, 허들 레이스, 링아웃.">
+<title>Flamingo Stadium · Flaming Games</title>
+<style>
+:root{--paper:#f5f0df;--ink:#182f3b;--coral:#e87259;--teal:#26786b;--muted:#637069;--line:#d5d5c3;--white:#fffaf0;--display:Impact,"Arial Narrow",sans-serif}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:20px}body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}a{color:inherit}button,input{font:inherit}a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--teal);outline-offset:5px}.wrap{max-width:1280px;margin:auto;padding:0 40px}.topbar{min-height:84px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ink);gap:20px}.brand{display:flex;align-items:center;gap:11px;text-decoration:none;font-weight:850;letter-spacing:-.05em;font-size:20px}.brand-icon{font-size:28px}.topnav{display:flex;align-items:center;gap:28px;font-size:12px;font-weight:750}.topnav a{text-decoration:none}.topnav a:hover{text-decoration:underline}.topnav .back{border:1px solid var(--ink);padding:11px 15px;border-radius:30px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;display:flex;align-items:center;gap:9px}.eyebrow:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--coral)}.hero{display:grid;grid-template-columns:1.06fr 1fr;align-items:center;gap:15px;padding:57px 0 35px}.hero h1{font-family:var(--display);font-size:clamp(62px,7.9vw,108px);line-height:.86;letter-spacing:-.035em;font-weight:900;margin:23px 0 27px}.hero h1 span{display:block;color:var(--coral)}.hero-copy{max-width:410px;font-size:15px;line-height:1.8;margin:0;color:#54625e;word-break:keep-all}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:27px}.button{display:inline-flex;align-items:center;justify-content:center;gap:22px;min-height:47px;padding:13px 20px;border:1px solid var(--ink);background:var(--ink);color:var(--white);text-decoration:none;border-radius:6px;font-size:13px;font-weight:750;transition:transform .2s,background .2s}.button:hover{transform:translateY(-2px);background:var(--teal)}.button.secondary{background:transparent;color:var(--ink)}.hero-art{position:relative;align-self:stretch;display:flex;align-items:center;justify-content:center;min-height:370px}.hero-art svg{width:100%;max-width:540px;height:auto;overflow:visible}.edition{position:absolute;right:2%;top:1%;width:84px;height:84px;border:1px solid var(--coral);border-radius:50%;display:grid;place-content:center;text-align:center;font-size:9px;letter-spacing:.09em;line-height:1.5;transform:rotate(13deg);color:var(--coral)}.edition strong{font-family:var(--display);font-size:30px;line-height:1}.art-caption{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--teal)}.stats{border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);display:grid;grid-template-columns:repeat(3,1fr);padding:17px 0;margin-bottom:48px}.stat{display:flex;align-items:center;justify-content:center;gap:17px;border-right:1px solid var(--line)}.stat:last-child{border:0}.stat strong{font-family:var(--display);font-size:41px;line-height:1}.stat span{font-size:11px;line-height:1.65;font-weight:650}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:0 0 22px}.section-head h2{font-size:28px;letter-spacing:-.05em;margin:8px 0 0}.section-head p{font-size:12px;margin:0;color:var(--muted)}.section-kicker{font-size:10px;letter-spacing:.15em;font-weight:800;color:var(--teal)}.featured-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:19px;margin-bottom:52px}.feature-card{border:1px solid var(--ink);border-radius:9px;overflow:hidden;background:var(--white);text-decoration:none;transition:transform .18s,box-shadow .18s}.feature-card:hover{transform:translateY(-5px);box-shadow:5px 6px 0 var(--ink)}.feature-art{position:relative;height:207px;overflow:hidden;background:#cfe3d4}.feature-art.run{background:#f3ceb0}.feature-art.topsy{background:#becbc8}.feature-art svg{width:100%;height:100%;display:block}.pill{position:absolute;top:14px;left:14px;background:var(--ink);color:var(--white);padding:6px 9px;border-radius:4px;font-size:10px;font-weight:800;letter-spacing:.08em}.feature-info{padding:18px 19px 19px}.feature-type{font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--teal);margin-bottom:7px}.feature-info h3{font-size:20px;letter-spacing:-.04em;margin:0 0 8px;display:flex;justify-content:space-between}.feature-info p{font-size:12px;line-height:1.7;margin:0;color:var(--muted);word-break:keep-all}.club-guide{display:grid;grid-template-columns:.95fr 1.2fr;gap:40px;padding:27px 30px;background:var(--ink);color:var(--paper);border-radius:9px;margin-bottom:55px}.club-guide h2{margin:8px 0 10px;font-size:24px;letter-spacing:-.04em}.club-guide p{margin:0;line-height:1.8;font-size:12px;color:#cad2c7;word-break:keep-all}.club-guide .section-kicker{color:#9cccbc}kbd{font:inherit;display:inline-block;min-width:19px;text-align:center;background:#ffffff16;border:1px solid #ffffff35;border-radius:3px;padding:0 4px;color:var(--paper)}.key-table{width:100%;border-collapse:collapse;font-size:11px}.key-table th{text-align:left;font-size:9px;color:#b7c3bd;font-weight:600;padding-bottom:9px;letter-spacing:.1em}.key-table td{padding:8px 0;border-top:1px solid #ffffff22}.player{font-weight:800;color:#f09384}.player.p2{color:#5aa9ff}.player.p3{color:#ffd166}.player.p4{color:#4fd37a}.library-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 23px}.filters{display:flex;gap:6px;flex-wrap:wrap}.filter{border:1px solid var(--line);background:transparent;border-radius:25px;padding:9px 16px;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer}.filter[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}.search{margin-left:auto;border-bottom:1px solid var(--ink);display:flex;align-items:center;gap:8px}.search input{border:0;background:transparent;padding:10px 0;font-size:12px;width:176px;color:var(--ink)}.search input:focus{outline-offset:3px}.game-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}.game-card{display:flex;flex-direction:column;padding:20px;background:#fcf8ec;border:1px solid var(--line);border-radius:7px;text-decoration:none;min-height:181px;transition:border-color .15s,transform .15s}.game-card:hover{border-color:var(--teal);transform:translateY(-3px)}.card-top{display:flex;align-items:center;justify-content:space-between;font-size:9px;font-weight:800;letter-spacing:.09em;color:var(--teal)}.game-number{color:#7a8276}.mode-tag{background:#e0e9d7;padding:4px 6px;border-radius:3px;font-size:9px;letter-spacing:.02em}.game-card h3{font-size:17px;letter-spacing:-.035em;margin:13px 0 7px}.game-card p{margin:0;font-size:12px;line-height:1.65;color:var(--muted);word-break:keep-all}.card-bottom{margin-top:auto;padding-top:15px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:10px;color:#5e6d64}.card-bottom span:last-child{color:var(--ink);font-size:16px}.empty{padding:40px 0;text-align:center;color:var(--muted);font-size:14px}.library-count{font-size:12px;color:var(--muted)}.site-footer{border-top:1px solid var(--ink);margin-top:52px;padding:24px 0 30px;display:flex;justify-content:space-between;gap:25px;font-size:10px;line-height:1.8;color:var(--muted)}.site-footer strong{font-size:12px;color:var(--ink)}.site-footer a{text-decoration:none}.site-footer a:hover{text-decoration:underline}.footer-links{display:flex;gap:20px;align-items:flex-start}.noscript{padding:22px;border:1px solid var(--coral);line-height:1.8}.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(min-width:1400px){.hero h1{font-size:112px}}@media(max-width:900px){.wrap{padding:0 24px}.hero{gap:0}.hero h1{font-size:75px}.hero-art{min-height:330px}.edition{width:64px;height:64px}.feature-art{height:175px}.club-guide{gap:24px}.game-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.wrap{padding:0 20px}.topbar{min-height:72px}.brand{font-size:16px}.brand-icon{font-size:23px}.topnav{gap:0}.topnav>a:not(.back){display:none}.topnav .back{padding:9px 11px;font-size:10px}.hero{display:flex;flex-direction:column;align-items:stretch;padding:37px 0 22px}.hero h1{font-size:clamp(68px,16vw,100px);margin-top:20px}.hero-copy{max-width:100%;font-size:13px}.hero-art{min-height:0;margin-top:23px}.hero-art svg{max-width:440px}.edition{top:3%;right:1%}.art-caption{bottom:0;font-size:8px}.stats{margin-bottom:35px;padding:15px 0}.stat{gap:9px}.stat strong{font-size:30px}.stat span{font-size:9px}.section-head h2{font-size:25px}.section-head p{font-size:10px;max-width:115px;text-align:right;line-height:1.6}.featured-grid{grid-template-columns:1fr;gap:15px;margin-bottom:36px}.feature-card{display:grid;grid-template-columns:40% 60%}.feature-art{height:100%;min-height:175px}.feature-art svg{width:160%;max-width:none;transform:translateX(-19%)}.pill{top:10px;left:10px;font-size:8px}.feature-info{align-self:center;padding:16px}.feature-info h3{font-size:17px}.feature-info p{font-size:11px}.club-guide{grid-template-columns:1fr;padding:24px;gap:22px;margin-bottom:38px}.game-grid{grid-template-columns:1fr}.game-card{min-height:161px}.search{margin-left:0;flex:1;min-width:160px}.search input{width:100%}.library-tools{gap:14px}.filter{padding:8px 12px;font-size:11px}.site-footer{flex-direction:column;gap:16px}.section-head{gap:10px}.library-count{white-space:nowrap;font-size:11px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="topbar">
+<a class="brand" href="./" aria-label="Flamingo Stadium 홈"><span class="brand-icon" aria-hidden="true">🦩</span> STADIUM CLUB</a>
+<nav class="topnav" aria-label="주 메뉴"><a href="#featured">3D 하이라이트</a><a href="#all-games">모든 종목</a><a class="back" href="../">← Flaming Games</a></nav>
+</header>
+<main>
+<section class="hero" aria-labelledby="hero-title">
+<div>
+<div class="eyebrow">Flaming Games presents · Mini-game club</div>
+<h1 id="hero-title">FLAMINGO<span>STADIUM.</span></h1>
+<p class="hero-copy">다 같이 모여, 한 판 더.<br>포켓몬 스타디움 키즈 클럽에서 영감받은<br>플라밍고들의 작은 운동회. 이제 3D 경기장에서도!</p>
+<div class="hero-actions"><a class="button" href="games/splash.html?view=3d">3D 스플래시 시작 <span aria-hidden="true">↗</span></a><a class="button secondary" href="#all-games">21개 종목 둘러보기 <span aria-hidden="true">↓</span></a></div>
+</div>
+<div class="hero-art">
+<div class="edition" aria-hidden="true">READY, SET<strong>PLAY!</strong>1–4 PLAYERS</div>
+<svg viewBox="0 0 560 400" role="img" aria-label="플라밍고들이 모인 레트로 운동장 일러스트">
+<defs><pattern id="crowd" width="17" height="13" patternUnits="userSpaceOnUse"><circle cx="4" cy="5" r="2" fill="#f5f0df"/><circle cx="12" cy="10" r="2" fill="#e87259"/></pattern><g id="bird"><path d="M-10 18v25m17-25v25" fill="none" stroke="#bd7556" stroke-width="4"/><path d="M-16 44h12m4 0h13" stroke="#bd7556" stroke-width="4" stroke-linecap="round"/><ellipse cx="0" cy="8" rx="20" ry="15" fill="currentColor"/><path d="M9 5c15-9-5-36 9-45 13-9 21 3 19 12" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round"/><path d="M35-29l13 4-8 9-5-2" fill="#f5e6ae"/><path d="M42-23l6-2-8 9-5-2" fill="#182f3b"/><circle cx="31" cy="-32" r="2" fill="#182f3b"/><path d="M-10 5Q0 17 10 5" fill="none" stroke="#182f3b" stroke-opacity=".13" stroke-width="3" stroke-linecap="round"/></g></defs>
+<ellipse cx="282" cy="340" rx="229" ry="36" fill="#182f3b" opacity=".08"/>
+<path d="M45 168v73c0 65 101 118 237 118s237-53 237-118v-73" fill="#213d46"/>
+<path d="M45 196c0 65 101 118 237 118s237-53 237-118" fill="none" stroke="#345958" stroke-width="26"/>
+<ellipse cx="282" cy="168" rx="237" ry="117" fill="#182f3b"/>
+<ellipse cx="282" cy="168" rx="222" ry="101" fill="url(#crowd)"/>
+<ellipse cx="282" cy="182" rx="192" ry="84" fill="#f5f0df"/>
+<ellipse cx="282" cy="185" rx="179" ry="76" fill="#e87259"/>
+<ellipse cx="282" cy="185" rx="162" ry="64" fill="none" stroke="#f5f0df" stroke-width="2"/>
+<ellipse cx="282" cy="185" rx="145" ry="53" fill="none" stroke="#f5f0df" stroke-width="2"/>
+<ellipse cx="282" cy="185" rx="128" ry="43" fill="#569586"/>
+<ellipse cx="282" cy="185" rx="83" ry="27" fill="none" stroke="#a7c5a1" stroke-width="1.5"/><path d="M282 142v86" stroke="#a7c5a1" stroke-width="1.5"/>
+<path d="M75 136V42m409 94V42" stroke="#182f3b" stroke-width="5"/>
+<path d="M75 41l47 12-47 12m409-24l-47 12 47 12" fill="#e87259"/>
+<path d="M152 296v28m87-9v30m87-30v30m86-49v28" stroke="#56746e" stroke-width="9"/>
+<g transform="translate(178 195) scale(.8)" color="#f498a6"><use href="#bird"/></g>
+<g transform="translate(329 162) scale(.6)" color="#f3d376"><use href="#bird"/></g>
+<g transform="translate(388 221) scale(.83)" color="#adadcf"><use href="#bird"/></g>
+<g transform="translate(253 117) scale(.57)" color="#96c9bf"><use href="#bird"/></g>
+<g transform="translate(277 257)"><path d="M-36-4h72v32h-72z" fill="#f5f0df"/><path d="M-22-17h44v13h-44z" fill="#f5f0df"/><text y="17" text-anchor="middle" font-family="Impact,sans-serif" font-size="17" fill="#182f3b">PLAY</text></g>
+<path d="M49 87l5 8m105-58 8 4m204-11-3 9m162 109 8-5m-15 160-9 3m-440-12-7-3" stroke="#e87259" stroke-width="4"/>
+</svg>
+<div class="art-caption">GOOD FRIENDS. GREAT LITTLE GAMES.</div>
+</div>
+</section>
+<div class="stats" aria-label="스타디움 소개"><div class="stat"><strong>21</strong><span>미니게임<br>골라 하는 운동회</span></div><div class="stat"><strong>03</strong><span>3D 리메이크<br>새로운 경기장</span></div><div class="stat"><strong>1–4</strong><span>로컬 플레이어<br>한 키보드로 함께</span></div></div>
+<section id="featured" aria-labelledby="featured-title">
+<div class="section-head"><div><span class="section-kicker">A NEW DIMENSION</span><h2 id="featured-title">익숙한 승부, 새로운 경기장.</h2></div><p>3D로 새롭게 만나는 3종목<br>게임 안에서 2D 전환 가능</p></div>
+<div class="featured-grid" id="featured-grid"></div>
+</section>
+<section class="club-guide" aria-labelledby="guide-title">
+<div><span class="section-kicker">BRING YOUR FRIENDS</span><h2 id="guide-title">키보드 하나면, 준비 끝.</h2><p>타이틀·결과 화면에서 <kbd>1</kbd>–<kbd>4</kbd>로 사람 수를 선택하세요. 남는 자리는 CPU가 채워요. 타이틀에서 <kbd>K</kbd>를 누르면 각자의 키를 바꿀 수 있어요. 3D 3종목은 1P 터치도 지원해요. 설정과 최고 기록은 이 브라우저에 저장됩니다.</p></div>
+<table class="key-table"><caption class="visually-hidden">플레이어별 기본 키보드 조작</caption><thead><tr><th>PLAYER</th><th>이동</th><th>A 버튼</th><th>B 버튼</th></tr></thead><tbody><tr><td class="player">01 · 1P</td><td>↑ ↓ ← →</td><td>SPACE</td><td>ENTER</td></tr><tr><td class="player p2">02 · 2P</td><td>W A S D</td><td>C</td><td>V</td></tr><tr><td class="player p3">03 · 3P</td><td>I J K L</td><td>,</td><td>.</td></tr><tr><td class="player p4">04 · 4P</td><td>T F G H</td><td>B</td><td>N</td></tr></tbody></table>
+</section>
+<section id="all-games" aria-labelledby="all-title">
+<div class="section-head"><div><span class="section-kicker">THE FULL LINEUP</span><h2 id="all-title">오늘의 종목을 골라보세요.</h2></div><span class="library-count" id="game-count" aria-live="polite">21개 종목</span></div>
+<div class="library-tools"><div class="filters" aria-label="종목 필터"><button type="button" class="filter" data-filter="all" aria-pressed="true">전체 21</button><button type="button" class="filter" data-filter="3d" aria-pressed="false">3D 3</button><button type="button" class="filter" data-filter="1" aria-pressed="false">스타디움 1</button><button type="button" class="filter" data-filter="2" aria-pressed="false">스타디움 2</button></div><label class="search"><span aria-hidden="true">⌕</span><span class="visually-hidden">게임 검색</span><input id="game-search" type="search" placeholder="어떤 게임을 찾으세요?" autocomplete="off"></label></div>
+<div class="game-grid" id="game-grid"></div><p class="empty" id="empty" hidden>검색 결과가 없어요. 다른 이름으로 찾아보세요.</p>
+<noscript><p class="noscript">미니게임을 즐기려면 JavaScript를 켜주세요. <a href="games/splash.html">스플래시</a> · <a href="games/run.html">달려라 플라밍고</a> · <a href="games/topsy.html">빙글빙글 링아웃</a></p></noscript>
+</section>
+</main>
+<footer class="site-footer"><div><strong>FLAMINGO STADIUM / FLAMING GAMES</strong><br>포켓몬 스타디움 1·2 키즈 클럽에서 영감받은 팬 미니게임 컬렉션.<br>데스크톱 키보드 플레이 · 플레이 기록은 현재 브라우저에 저장</div><div class="footer-links"><a href="../">← 모든 Flaming Games</a><a href="https://github.com/flam-ing/flaming-games/tree/main/flamingo-stadium">소스 ↗</a></div></footer>
+</div>
+<script src="games.js"></script>
+<script>
+const GAMES = window.GAMES_DATA || [];
+const FEATURED = ['splash','run','topsy'];
+const featuredCopy = {
+ splash:{type:'JUMP · CHARGE · SPLASH',text:'힘을 모아 높이 점프! 수영장 위 종을 울리고 가장 많은 점수를 모으세요.'},
+ run:{type:'RUN · JUMP · FINISH',text:'네 개의 레인, 하나의 결승선. 허들을 뛰어넘어 가장 먼저 골인하세요.'},
+ topsy:{type:'SPIN · BUMP · WIN',text:'빙글빙글 회전 공격! 아슬아슬한 링 위에서 상대를 밀어내세요.'}
+};
+const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function bird(x,y,color,scale=1){return `<g transform="translate(${x} ${y}) scale(${scale})" color="${color}"><ellipse cy="27" rx="18" ry="5" fill="#182f3b" opacity=".12"/><path d="M-7 9v16m13-16v16" stroke="#bd7556" stroke-width="3"/><ellipse rx="18" ry="12" fill="currentColor"/><path d="M7 1c12-9-4-28 7-34 11-7 19 1 17 10" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><path d="M29-23l12 4-8 8-4-4" fill="#f5e6ae"/><path d="M37-20l4 1-8 8-4-4" fill="#182f3b"/><circle cx="27" cy="-27" r="1.7" fill="#182f3b"/><path d="M-9-1q10 12 18 0" fill="none" stroke="#182f3b" stroke-opacity=".15" stroke-width="3"/></g>`;}
+function art(id){
+ let scene='';
+ if(id==='splash') scene=`<path d="M37 102l214-50 105 69-218 67z" fill="#faf3df"/><path d="M37 102v16l101 72 218-53v-16l-218 51z" fill="#93b6a7"/><path d="M62 104l187-41 82 55-192 46z" fill="#67b5bd"/><path d="M80 108l177 31m-91-53 96 59m-158-32 166-38" stroke="#bce3d8" stroke-width="2" opacity=".6"/><path d="M104 95V45m0 0h164v35" fill="none" stroke="#436f67" stroke-width="5"/><path d="M166 47v21" stroke="#182f3b" stroke-width="2"/><path d="M155 80v-7q11-22 22 0v7z" fill="#edbb62"/><path d="M151 81h30" stroke="#c28a48" stroke-width="4"/>${bird(159,110,'#eb8f9c',.95)}${bird(251,118,'#edd277',.65)}<path d="M136 133l-8 4m45-11 8 5m-17 1-1 8" stroke="#f4faf1" stroke-width="3"/>`;
+ if(id==='run') scene=`<path d="M-10 128L243 39l169 94-269 101z" fill="#ca705d"/><path d="M0 129l138 87m-95-104 142 88M89 95l141 88m-94-106 140 90m-92-107 141 90" stroke="#f7dfbd" stroke-width="2"/><path d="M159 99l31-10v-18m-31 28V81l31-10m16 68 34-11v-19m-34 30v-19l34-11" fill="none" stroke="#f5f0df" stroke-width="5"/><path d="M159 81l31-10m16 49 34-11" stroke="#263f48" stroke-width="5"/>${bird(130,119,'#eaa0aa',.93)}${bird(257,95,'#7bbfb7',.64)}${bird(231,165,'#efd276',.72)}<path d="M94 113l-12 3m10 4-16 5m42-16-10 3" stroke="#f5f0df" stroke-width="3"/>`;
+ if(id==='topsy') scene=`<ellipse cx="196" cy="166" rx="134" ry="27" fill="#182f3b" opacity=".12"/><path d="M70 103l70-48h109l69 48v36l-70 41H140l-70-41z" fill="#284c53"/><path d="M70 103l70-48h109l69 48-70 47H140z" fill="#e8bd70"/><path d="M88 103l61-38h91l59 38-59 36h-91z" fill="#739f8c"/><ellipse cx="194" cy="103" rx="47" ry="21" fill="none" stroke="#e3e4b6" stroke-width="2"/>${bird(161,104,'#ee98a1',.9)}${bird(237,99,'#a9a2cb',.8)}<path d="M132 122c-21-13 2-25 20-24m71-23c30 0 49 22 22 31" fill="none" stroke="#faf1cd" stroke-width="3" stroke-linecap="round"/><path d="M133 82l-5-12m132 45 13 4" stroke="#f5f0df" stroke-width="3"/>`;
+ return `<svg viewBox="0 0 390 207" aria-hidden="true">${scene}</svg>`;
+}
+document.getElementById('featured-grid').innerHTML = FEATURED.map(id => {
+ const game=GAMES.find(g=>g.id===id), copy=featuredCopy[id];
+ if(!game)return '';
+ return `<a class="feature-card" href="games/${id}.html?view=3d"><div class="feature-art ${id}">${art(id)}<span class="pill">NEW · 3D</span></div><div class="feature-info"><div class="feature-type">${copy.type}</div><h3>${escapeHTML(game.title)} <span aria-hidden="true">↗</span></h3><p>${copy.text}</p></div></a>`;
+}).join('');
+let activeFilter='all';
+function renderGames(){
+ const query=document.getElementById('game-search').value.trim().toLocaleLowerCase();
+ const games=GAMES.filter(g=>(activeFilter==='all'||(activeFilter==='3d'?g.render3d:g.series===Number(activeFilter)))&&(!query||`${g.title} ${g.orig} ${g.blurb}`.toLocaleLowerCase().includes(query)));
+ document.getElementById('game-grid').innerHTML=games.map(g=>`<a class="game-card" href="games/${g.id}.html"><div class="card-top"><span><span class="game-number">${String(GAMES.indexOf(g)+1).padStart(2,'0')}</span> &nbsp; STADIUM ${g.series}</span><span class="mode-tag">${g.render3d?'3D + 2D':'2D CLASSIC'}</span></div><h3>${escapeHTML(g.title)}</h3><p>${escapeHTML(g.blurb)}</p><div class="card-bottom"><span>${escapeHTML(g.controls)}</span><span aria-hidden="true">↗</span></div></a>`).join('');
+ document.getElementById('game-count').textContent=`${games.length}개 종목`;
+ document.getElementById('empty').hidden=games.length!==0;
+}
+document.querySelectorAll('.filter').forEach(button=>button.addEventListener('click',()=>{activeFilter=button.dataset.filter;document.querySelectorAll('.filter').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));renderGames();}));
+document.getElementById('game-search').addEventListener('input',renderGames);
+renderGames();
+</script>
+</body>
+</html>

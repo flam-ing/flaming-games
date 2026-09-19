@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><script>if(/\/games\/[^/]+\/$/.test(location.pathname)){const base=document.createElement('base');base.href='../';document.head.append(base);}</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>동굴 하트 플라밍고 · Flamingo Stadium</title><script>document.write('<link rel="stylesheet" href="../common/style.css">');</script></head>
+<body><div class="wrap"><canvas id="game"></canvas><div class="bar"><a href="../index.html">← 스타디움</a><span>조작: A 버튼 연타 = 날갯짓 · ←→ 이동 · 하트를 모으세요</span></div></div>
+<script>document.write('<script src="../common/stadium.js"><\/script>');</script>
+<script>
+const { palette, drawFlamingo, drawPlayerTag, Game, sfx, text, rr, rand, clamp, lerp, slots } = STADIUM;
+// 원작 Gutsy Golbat (specs/golbat.md). 60초 자동 스크롤 동굴, 끝(루주라)에 닿을 때 하트 최다가 승리. 플레이어는 화면 좌표계, 스크롤은 배경·하트·코일에만 적용.
+const DUR = 60, TOP = 130, BOT = 470, XMIN = 60, XMAX = 820, R = 22, GRAV = 620, FLAP = -150, TERM = 300, ACC = 700, VMAX = 180, DEC = 500;
+const JX = 900, JY = 330, BEAK = [JX - 140, JY - 25], ENTRY = 820, FLOOR = 425; // 루주라는 화면 오른쪽 끝에 반쯤 걸침. 하트는 x<ENTRY부터 획득 가능(입구 독점 방지), 바닥 FLOOR 아래는 코일 전용
+const magLoss = h => Math.min(6, Math.ceil(h / 2)); // 코일 페널티: 가진 하트 절반(올림), 1회 상한 6 (§12-1). 대안: () => 3
+const scrollV = t => lerp(140, 200, clamp(t / DUR, 0, 1)); // 우리 튜닝(§12-8). 원작 느낌 우선이면 () => 170
+// CPU 프로파일(§8) 0 쉬움·1 보통·2 어려움·3 매우 어려움: react 판단 주기(s) · tol 고도 허용(px) · miss 날갯짓 실수 · det/fail 코일 감지 거리·실패율 · push 밀치기 의도 · spd 좌우 배율 · noise 목표 흔들림 · gap 연타 최소 간격
+const AI = [{ react: .42, tol: 60, miss: .2, det: 120, fail: .35, push: 0, spd: .7, noise: 40, gap: .2 }, { react: .26, tol: 35, miss: .1, det: 200, fail: .15, push: .15, spd: .85, noise: 20, gap: .14 },
+  { react: .15, tol: 20, miss: .04, det: 280, fail: .05, push: .6, spd: 1, noise: 8, gap: .11 }, { react: .09, tol: 12, miss: .01, det: 320, fail: .01, push: .85, spd: 1, noise: 4, gap: .09 }];
+const CPU_LV = [1, 2, 0]; // 사람이 아닌 슬롯에 순서대로 보통·어려움·쉬움 (§8)
+const sv0 = () => scrollV(T), hash = k => Math.abs(Math.sin(k * 12.9898 + 4.1) * 43758.5453) % 1;
+let g, jynxSaid, P, hearts, mags, parts, pops, T, dist, hTimer, mTimer, phase, endT, caption, leadKey, kissT, jynxX, lastTick, safety, winner, bigHeart;
+
+function say(s, life = 0.8) { caption = { s, life }; }
+function pop(x, y, s, c) { pops.push({ x, y, s, c, life: 0.6 }); }
+function sparkle(x, y, n, c) { for (let k = 0; k < n; k++) parts.push({ x, y, vx: rand(-90, 90), vy: rand(-120, 30), life: rand(.25, .45), c }); }
+function kiss() { // 키스 1번 = 하트 2~4개가 사인파 궤적(진폭 40·파장 160)으로 묶여 오른쪽 밖에서 진입, 55%는 위에서 내려앉음(§11-6). 마지막 8초엔 루주라 부리에서 직접
+  const n = 2 + Math.floor(Math.random() * 3), fin = T >= DUR - 8, ph = rand(0, 6.28), sky = !fin && Math.random() < .55, x0 = sky ? rand(350, 780) : fin ? BEAK[0] : g.W + 30, y0 = sky ? TOP - 20 : fin ? rand(BEAK[1] - 80, BEAK[1] + 80) : rand(150, 400);
+  for (let k = 0; k < n; k++) hearts.push(sky ? { x: x0 + k * 30, y: y0, vx: sv0() - 25, vy: 60, sky: true, wait: 0 } : { x: x0 + k * 30, y: y0, y0, ph, vx: -40, wait: 0 });
+  kissT = 0.2;
+}
+function drop(x, y, vx, vy) { if (hearts.filter(h => h.drop).length >= 12) return; hearts.push({ x, y, vx, vy, drop: true, wait: 0.5 }); }
+function spawnMag() { const k = T / DUR, top = Math.random() < lerp(.15, .35, k); const y0 = top ? rand(TOP + 12, TOP + 42) : rand(400, 460); mags.push({ x: g.W + 40, y: y0, y0, amp: lerp(10, 30, k), ph: rand(0, 6.28), flash: 0 }); }
+function flap(p) { p.vy = FLAP; p.flapT = 0; p.flyT = 0.15; if (p.human) sfx.beep(660, .05, 'square', .03); } // 임펄스는 합산이 아니라 대입 (커비식 부유, §11-5)
+function lose(p, n, fan) { // 하트 n개 손실. 0이면 연출 없음(§12-2). fan=true 부채꼴 흩뿌림(코일) / false 위로 20px 튀어 떨어짐(충돌)
+  n = Math.min(n, p.h); if (n <= 0) return; p.h -= n; pop(p.x, p.y - 90, '−' + n, palette.red);
+  for (let k = 0; k < n; k++) { const a = fan ? rand(-100, -40) * Math.PI / 180 : -Math.PI / 2 + rand(-.3, .3), v = fan ? rand(180, 260) : 110; drop(p.x, p.y, Math.cos(a) * v, Math.sin(a) * v); }
+}
+function think(p, dt) { // CPU: react 주기마다 목표(tx,ty) 재계산, 매 프레임 (a) 목표보다 아래면 연타 (b) tx 방향 홀드
+  const a = AI[p.lv], mid = (TOP + BOT) / 2; p.react -= dt; p.gapT -= dt;
+  if (p.react <= 0) {
+    p.react = a.react; let best = null, bs = -1e9;
+    for (const h of hearts) {
+      if (h.abs || Math.abs(h.x - p.x) > 420 || h.x < 40 || h.x > g.W + 40) continue;
+      const d = Math.hypot(h.x - p.x, h.y - p.y); let s = -d - (h.x < p.x - 40 ? 300 : 0) - (h.x > ENTRY ? 120 : 0); // 가장 가까운 앞쪽 하트(§8). 지나간 하트는 못 따라잡음
+      if (p.lv === 1 && h.y < p.y) s += 60; // 보통: 위쪽 하트 가중
+      if (p.hy && h.drop) s += 150; // 하이에나: 떨어진 하트 선호
+      if (p.lv >= 2) { let den = 0; for (const o of hearts) { if (o.abs || o.x > ENTRY || o.wait > 0) continue; const dd = Math.hypot(o.x - h.x, o.y - h.y); if (dd < 320) den += (1 - dd / 320) * (o.drop && p.lv === 3 ? 1.5 : 1); } s += den * 90; } // 어려움: 밀도 최대 지점
+      if (s > bs) { bs = s; best = h; }
+    }
+    p.tx = p.hy ? clamp(best ? best.x - 10 : p.homeX, p.homeX - 80, p.homeX + 80) : best ? clamp(best.x - 10, XMIN, ENTRY - 20) : p.homeX; p.ty = (best ? best.y : mid) + rand(-a.noise, a.noise); // 모든 CPU가 같은 상한까지 쫓아 같은 묶음을 두고 경쟁, homeX는 빈손일 때 대기 위치
+    if (p.vy > 150 && !p.late) p.late = true; // 낙하 중엔 회피 반응이 한 주기 늦음 → 바닥 코일에 주로 당함 (§11-11)
+    else { p.late = false; for (const m of mags) { const dx = m.x - p.x; if (dx > -30 && dx < a.det && Math.abs(m.y - p.y) < 50 && Math.random() >= a.fail) p.ty = m.y < mid ? m.y + 90 : m.y - 90; } }
+    if (a.push && Math.random() < a.push) { // 밀치기: 선두가 코일 위 ±60px에 있으면 위에서 덮쳐 코일로 밀어 넣는다
+      const L = P.filter(q => q !== p).sort((u, v) => v.h - u.h)[0];
+      if (L.h > p.h && mags.some(m => Math.abs(m.x - L.x) < 60 && L.y < m.y && m.y - L.y < 60)) { p.tx = L.x - 30; p.ty = L.y - 20; }
+    }
+  }
+  let fl = false;
+  const need = p.y > p.ty + a.tol || (p.y > p.ty - a.tol && p.vy > 200); // 목표보다 아래면 연타, 허용 범위 안에서는 낙하만 억제, 한참 위면 그냥 떨어진다
+  if (need && p.gapT <= 0) { if (Math.random() < a.miss) p.gapT = a.gap * .5; else { fl = true; p.gapT = a.gap; } }
+  return { ax: (Math.abs(p.tx - p.x) > 12 ? Math.sign(p.tx - p.x) : 0) * a.spd, fl };
+}
+function heart(ctx, x, y, s, fill, a = 1) {
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.beginPath(); ctx.moveTo(0, s * .9);
+  ctx.bezierCurveTo(-s * 1.2, s * .1, -s * .9, -s * .9, 0, -s * .35); ctx.bezierCurveTo(s * .9, -s * .9, s * 1.2, s * .1, 0, s * .9); ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = palette.white; ctx.lineWidth = Math.max(1, s / 8); ctx.stroke();
+  ctx.fillStyle = '#ffd1dd'; ctx.beginPath(); ctx.ellipse(-s * .4, -s * .4, s * .2, s * .12, -.6, 0, 7); ctx.fill(); ctx.restore();
+}
+function drawMag(ctx, m, t) { // 코일: 회색 몸통 + 빨강/파랑 U자 자석 팔 + 눈 + 노란 스파크 3개. 접촉 시 0.3s 노랗게
+  ctx.save(); ctx.translate(m.x, m.y); ctx.lineWidth = 7;
+  for (const s of [-1, 1]) { ctx.save(); ctx.scale(s, 1); ctx.strokeStyle = '#e04848'; ctx.beginPath(); ctx.arc(-26, 0, 9, Math.PI / 2, Math.PI * 1.5); ctx.stroke(); ctx.strokeStyle = '#4a78e0'; ctx.beginPath(); ctx.moveTo(-27, -9); ctx.lineTo(-16, -9); ctx.moveTo(-27, 9); ctx.lineTo(-16, 9); ctx.stroke(); ctx.restore(); }
+  ctx.fillStyle = m.flash > 0 ? '#ffe45c' : '#b8c2d0'; ctx.beginPath(); ctx.arc(0, 0, 22, 0, 7); ctx.fill();
+  ctx.fillStyle = '#8a94a2'; ctx.beginPath(); ctx.arc(0, -18, 4, 0, 7); ctx.arc(-13, 13, 3.5, 0, 7); ctx.arc(13, 13, 3.5, 0, 7); ctx.fill();
+  ctx.fillStyle = palette.white; ctx.beginPath(); ctx.arc(0, 0, 11, 0, 7); ctx.fill(); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(2, 1, 5, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#ffe45c'; ctx.lineWidth = 2; for (let k = 0; k < 3; k++) { const a = t * 9 + k * 2.1; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 25, Math.sin(a) * 25); ctx.lineTo(Math.cos(a + .35) * 36, Math.sin(a + .35) * 34); ctx.stroke(); }
+  ctx.restore();
+}
+function crown(ctx, x, y, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x - 12, y + 7); ctx.lineTo(x - 13, y - 6); ctx.lineTo(x - 6, y); ctx.lineTo(x, y - 9); ctx.lineTo(x + 6, y); ctx.lineTo(x + 13, y - 6); ctx.lineTo(x + 12, y + 7); ctx.closePath(); ctx.fill(); ctx.strokeStyle = palette.ink; ctx.lineWidth = 1.5; ctx.stroke(); }
+
+g = Game({ id: 'golbat', title: '동굴 하트 플라밍고', howto: ['A 버튼 연타로 날고 ←→ 로 움직여 하트를 모으세요', '다른 새에게 들이받히면 하트 −1', '자석에 닿으면 가진 하트의 절반을 잃어요!'], duration: 0,
+  init() { // 4마리 같은 트랙. 초기 x=200, y=150+i×80. Go 직후 0.5s 동안 일제히 떠오름(vy=−120)
+    P = slots().map(s => ({ ...s, x: 200, y: 150 + s.i * 80, vx: 0, vy: -120, h: 0, flapT: 1, flyT: 0, hitT: 0, dizzyT: 0, inv: 0, grace: 0, pop: 0, lastPick: 0, lv: 1, react: 0, gapT: 0, tx: 600, ty: 300, late: false, homeX: 600 }));
+    let c = 0; for (const p of P) if (!p.human) { p.lv = CPU_LV[c++] ?? 1; p.hy = p.lv >= 2 && Math.random() < .3; p.homeX = p.hy ? rand(300, 450) : rand(500, 700); p.react = rand(0, .3); } // 어려움만 30% 후방 "하이에나" (§11-7)
+    hearts = []; mags = []; parts = []; pops = []; T = 0; dist = 0; hTimer = 0.4; mTimer = 2.5; phase = 'play'; endT = 0; say('A 버튼 연타로 날고 ←→ 로 움직여요!', 4); leadKey = ''; jynxX = g.W + 200; jynxSaid = false; lastTick = -1; safety = 0; winner = null; bigHeart = null;
+    kiss(); for (const h of hearts) if (h.x > g.W) h.x -= 260; spawnMag(); mags[0].x = 640; kissT = 0; // 타이틀 장면 예열
+  },
+  update(dt) {
+    safety += dt; if (safety > DUR + 15) g.finish(); // 안전장치
+    if (phase === 'end') { // 종료 연출 1.6s (§11-9): 스크롤 정지 → 0.4s 뒤 루주라가 1위에게 큰 하트(0.6s) → finish. 입력·판정 정지
+      endT += dt; if (endT >= 0.4 && !bigHeart) { bigHeart = { t: 0 }; sfx.good(); } if (bigHeart) bigHeart.t = Math.min(1, bigHeart.t + dt / 0.6);
+      if (endT >= 1.6) g.finish(); return;
+    }
+    T += dt; const sv = scrollV(T); dist += sv * dt; const fin = T >= DUR - 8, k = clamp(T / DUR, 0, 1);
+    if (T >= DUR) { phase = 'end'; winner = P.slice().sort((a, b) => b.h - a.h || a.lastPick - b.lastPick || a.i - b.i)[0]; return; } // 동점 연출용 순위: 먼저 그 점수에 도달한 쪽
+    hTimer -= dt; if (hTimer <= 0 && (!fin || jynxX <= JX + 5)) { kiss(); hTimer = fin ? 1.0 : lerp(2.4, 1.6, k); } // 마지막 8초 "키스 세례"
+    mTimer -= dt; if (mTimer <= 0 && T < 54) { spawnMag(); mTimer = lerp(3.0, 1.6, k); } // t≥54 코일 생성 중단
+    if (fin) { if (!jynxSaid) { jynxSaid = true; say('동굴 출구가 보여요!'); } jynxX = Math.max(JX, jynxX - 400 * dt); const s = Math.ceil(DUR - T); if (s <= 5 && s !== lastTick) { lastTick = s; sfx.tick(); } }
+    for (const p of P) {
+      p.flapT += dt; p.flyT -= dt; p.hitT -= dt; p.dizzyT -= dt; p.inv -= dt; p.grace -= dt; p.pop -= dt;
+      let ax = 0, fl = false; const dz = p.dizzyT > 0; // 감전 중엔 입력 무시·강제 낙하(속도 0.5배)
+      if (!dz) { if (p.human) { const kb = g.p(p.i); fl = kb.hit('a') || kb.hit('up'); ax = kb.axis().x; } else ({ ax, fl } = think(p, dt)); }
+      if (fl) flap(p);
+      p.vy = Math.min(p.vy + GRAV * (T < 0.5 ? 0 : p.flapT < 0.12 ? .5 : 1) * (dz ? .5 : 1) * dt, dz ? TERM * .5 : TERM); // 날갯짓 직후 0.12s 중력 0.5배
+      p.y += p.vy * dt; if (p.y < TOP) { p.y = TOP; p.vy = Math.max(0, p.vy); } if (p.y > BOT) { p.y = BOT; p.vy = Math.min(0, p.vy); }
+      if (ax) p.vx = clamp(p.vx + ax * ACC * dt, -VMAX, VMAX); else p.vx -= Math.sign(p.vx) * Math.min(Math.abs(p.vx), DEC * dt); // 관성 있는 좌우
+      p.x = clamp(p.x + p.vx * dt, XMIN, XMAX);
+    }
+    let pair = null, deep = 0; // 플레이어 충돌: 프레임당 가장 깊이 겹친 한 쌍만 (§12-5), 무적 0.4s는 플레이어끼리만
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) { const a = P[i], b = P[j]; if (a.inv > 0 || b.inv > 0) continue; const d = Math.hypot(b.x - a.x, b.y - a.y); if (d < 2 * R && 2 * R - d > deep) { deep = 2 * R - d; pair = [a, b, d]; } }
+    if (pair) { // 법선 방향 상대 속도가 큰 쪽이 가해자(반발 0.6배·무손실), 차이 60 미만은 스침 → 양쪽 −1. 접근 속도 40 미만(기대기만)은 밀어내기만
+      const [a, b, d] = pair, nx = d > 1 ? (b.x - a.x) / d : 1, ny = d > 1 ? (b.y - a.y) / d : 0, ca = a.vx * nx + a.vy * ny, cb = -(b.vx * nx + b.vy * ny), att = Math.abs(ca - cb) < 60 ? null : ca > cb ? a : b;
+      const sep = (46 - d) / 2; a.x -= nx * sep; a.y -= ny * sep; b.x += nx * sep; b.y += ny * sep; for (const q of [a, b]) { q.x = clamp(q.x, XMIN, XMAX); q.y = clamp(q.y, TOP, BOT); }
+      if (ca + cb < 40) { const sx = a.x <= b.x ? -1 : 1; a.vx += sx * 90; b.vx -= sx * 90; a.inv = b.inv = 0.15; }
+      else { for (const q of [a, b]) { const s = q === a ? -1 : 1, m = q === att ? .6 : 1; q.vx = s * nx * 220 * m; q.vy = s * ny * 220 * m; q.inv = q.hitT = 0.4; if (q !== att) lose(q, 1, false); } sfx.hit(); }
+    }
+    for (const h of hearts) {
+      if (h.abs) { h.abs.t += dt / 0.1; h.x = lerp(h.x, h.abs.p.x, .5); h.y = lerp(h.y, h.abs.p.y, .5); continue; } // 0.1s 흡수
+      h.wait -= dt;
+      if (h.drop) { h.vx *= 1 - 3 * dt; h.vy = Math.min(h.vy + 300 * dt, 120); h.x += (h.vx - sv) * dt; h.y += h.vy * dt; if (h.y > FLOOR) { h.y = FLOOR; h.vy = h.land ? 0 : -h.vy * .5; h.land = h.land || T; } } // 한 번 튀고 1.5s 뒤 소멸
+      else if (h.sky) { h.x += (h.vx - sv) * dt; h.y = Math.min(h.y + h.vy * dt, FLOOR); h.vy = Math.max(15, h.vy - 30 * dt); } // 위에서 천천히 내려앉으며 왼쪽으로 표류
+      else { h.x += (h.vx - sv) * dt; h.y0 = Math.min(h.y0 + 25 * dt, 380); h.y = clamp(h.y0 + 40 * Math.sin(h.ph + h.x / 160 * 6.283), TOP - 20, FLOOR); }
+      if (h.wait > 0 || h.x > ENTRY) continue;
+      let pk = null, pd = R + 14; for (const p of P) { const d = Math.hypot(p.x - h.x, p.y - h.y); if (d < pd) { pd = d; pk = p; } } // 동시 접촉은 더 가까운 쪽 (§12-4)
+      if (pk) { pk.h = Math.min(99, pk.h + 1); pk.pop = 0.2; pk.lastPick = T; h.abs = { p: pk, t: 0 }; sfx.pop(); sparkle(h.x, h.y, 4, palette.pinkLight); }
+    }
+    hearts = hearts.filter(h => h.x > -30 && !(h.abs && h.abs.t >= 1) && !(h.land && T - h.land > 1.5));
+    for (const m of mags) {
+      m.x -= sv * dt; m.flash -= dt; m.y = m.y0 + m.amp * Math.sin(g.time * 4.19 + m.ph);
+      for (const p of P) if (p.grace <= 0 && Math.hypot(p.x - m.x, p.y - m.y) < R + 22) { p.dizzyT = 0.8; p.grace = 1.1; m.flash = 0.3; lose(p, magLoss(p.h), true); sfx.bad(); sfx.beep(180, .25, 'sawtooth', .3); } // 0.8s dizzy + 0.3s 유예 (§12-3)
+    }
+    mags = mags.filter(m => m.x > -40);
+    for (const q of parts) { q.vy += 400 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0);
+    for (const o of pops) { o.y -= 50 * dt; o.life -= dt; } pops = pops.filter(o => o.life > 0);
+    if (caption && (caption.life -= dt) <= 0) caption = null; kissT -= dt;
+    const max = Math.max(...P.map(p => p.h)), key = max > 0 ? P.filter(p => p.h === max).map(p => p.i).join('') : ''; // 선두 변동 tick, 사람이 새로 1위면 good (§12-6)
+    if (key !== leadKey) { if (key && [...key].some(c => P[+c].human && !leadKey.includes(c))) sfx.good(); else if (key) sfx.tick(); leadKey = key; }
+  },
+  draw(ctx) {
+    const W = g.W, H = g.H, t = g.time, wx = (k, sp, mul) => (((k * sp - dist * mul) % (W + sp)) + W + sp) % (W + sp) - sp / 2; // 패럴랙스 랩
+    const gr = ctx.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#1b1233'); gr.addColorStop(1, '#2a1d52'); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#241a45'; for (let k = 0; k < 9; k++) { const x = wx(k, 140, .3), hh = 100 + hash(k) * 100; ctx.beginPath(); ctx.moveTo(x - 40, 0); ctx.lineTo(x + 40, 0); ctx.lineTo(x, hh); ctx.fill(); ctx.beginPath(); ctx.ellipse(x + 60, 540, 70 + hash(k + 9) * 40, 90 + hash(k + 3) * 60, 0, 0, 7); ctx.fill(); } // 원경 0.3×
+    ctx.fillStyle = '#2f2a63'; for (let k = 0; k < 8; k++) { const x = wx(k, 180, .6); ctx.beginPath(); ctx.ellipse(x, 510, 60 + hash(k + 20) * 40, 40 + hash(k + 30) * 30, 0, 0, 7); ctx.fill(); } // 중경 0.6×
+    for (let k = 0; k < 14; k++) { const x = wx(k, 97, .6), y = 130 + hash(k + 40) * 320; ctx.fillStyle = `rgba(122,211,255,${.5 * (.5 + .5 * Math.sin(t * 3 + k))})`; ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); } // 반짝이는 광석
+    ctx.fillStyle = '#3a2f6e'; ctx.fillRect(0, 500, W, 40); ctx.fillRect(0, 0, W, 84); // 근경 1.0× 바닥·천장 + 석순·종유석
+    for (let k = 0; k < 11; k++) { const x = wx(k, 110, 1), hh = 30 + hash(k + 50) * 30; ctx.beginPath(); ctx.moveTo(x - 22, 502); ctx.lineTo(x + 22, 502); ctx.lineTo(x, 500 - hh); ctx.fill(); ctx.beginPath(); ctx.moveTo(x + 36, 83); ctx.lineTo(x + 64, 83); ctx.lineTo(x + 50, 84 + hh * .7); ctx.fill(); }
+    if (!P) return;
+    const ended = phase === 'end', max = Math.max(...P.map(p => p.h)), min = Math.min(...P.map(p => p.h));
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; for (const p of P) { ctx.beginPath(); ctx.arc(p.x, p.y, 30, 0, 7); ctx.fill(); } // 어두운 배경 대비 광원
+    for (const h of hearts) heart(ctx, h.x, h.y, h.abs ? 12 * (1 - h.abs.t) : 12, '#ff5c8a', h.drop && h.wait > 0 ? .45 + .3 * Math.sin(t * 30) : h.x > ENTRY ? .5 : 1);
+    for (const m of mags) drawMag(ctx, m, t);
+    if (jynxX < W + 150) drawFlamingo(ctx, jynxX, JY, 2.6, 'eat', t, palette.gold, { flip: true }); // 루주라: 마지막 8초 등장
+    const tags = [];
+    for (const p of P.slice().sort((a, b) => a.y - b.y)) { // 아래쪽 플레이어를 나중에 그려 앞에
+      let pose = p.dizzyT > 0 ? 'dizzy' : p.hitT > 0 ? 'hit' : p.flyT > 0 ? 'fly' : 'idle', rot = pose === 'idle' ? clamp(p.vy / 1200, -.15, .25) : 0, y = p.y;
+      if (ended) { pose = p.h === max ? 'jump' : p.h === min ? 'sleep' : 'idle'; rot = 0; if (p.h === max) y -= Math.abs(Math.sin(t * 5)) * 30; }
+      drawFlamingo(ctx, p.x, y, 1.2, pose, t + p.i, p.color, { rot });
+      tags.push([p.x, p.y - 62 < 112 ? p.y + 44 : p.y - 62, p.i]);
+    }
+    tags.sort((u, v) => u[0] - v[0]); for (let k = 1; k < tags.length; k++) if (Math.abs(tags[k][1] - tags[k - 1][1]) < 22 && tags[k][0] - tags[k - 1][0] < 44) tags[k][0] = tags[k - 1][0] + 44; // 겹치는 태그는 옆으로
+    for (const [x, y, i] of tags) drawPlayerTag(ctx, x, y, i);
+    if (bigHeart) { const e = bigHeart.t * (2 - bigHeart.t); heart(ctx, lerp(BEAK[0], winner.x, e), lerp(BEAK[1], winner.y - 30, e) - Math.sin(e * Math.PI) * 60, 24, '#ff5c8a'); }
+    for (const q of parts) { ctx.globalAlpha = clamp(q.life * 3, 0, 1); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, 3, 0, 7); ctx.fill(); }
+    for (const o of pops) { ctx.globalAlpha = Math.min(1, o.life * 2); text(ctx, o.s, o.x, o.y, 24, palette.white); text(ctx, o.s, o.x, o.y - 1, 24, o.c); }
+    ctx.globalAlpha = 1;
+    P.forEach((p, i) => { // HUD: 슬롯 색 4칸(태그·하트 아이콘·2자리 숫자), 획득 시 0.2s 팝, 선두는 왕관
+      const x = 40 + i * 230, ink = i === 2 ? palette.ink : palette.white, sc = 1 + 2 * Math.max(0, p.pop);
+      rr(ctx, x, 18, 220, 40, 12, p.color); drawPlayerTag(ctx, x + 48, 38, i); heart(ctx, x + 112, 38, 9, '#ff5c8a');
+      ctx.save(); ctx.translate(x + 152, 38); ctx.scale(sc, sc); text(ctx, String(p.h).padStart(2, '0'), 0, 10, 28, ink); ctx.restore();
+      if (max > 0 && p.h === max) crown(ctx, x + 198, 38, i === 2 ? palette.white : palette.gold);
+    });
+    rr(ctx, 240, 70, 480, 8, 4, 'rgba(255,255,255,.18)'); rr(ctx, 240, 70, Math.max(8, 480 * clamp(T / DUR, 0, 1)), 8, 4, palette.pink); // 진행 게이지: 입구 → 루주라
+    ctx.fillStyle = '#1b1233'; ctx.beginPath(); ctx.arc(222, 75, 9, Math.PI, 0); ctx.lineTo(231, 84); ctx.lineTo(213, 84); ctx.fill();
+    drawFlamingo(ctx, 742 + (kissT > 0 ? Math.sin(t * 60) * 3 : 0), 68, .45, 'eat', t, palette.gold, { flip: true }); // 루주라 미니 아이콘, 키스마다 흔들림
+    text(ctx, `남은 ${Math.ceil(Math.max(0, DUR - T))}초`, 772, 80, 14, palette.cream, 'left');
+    if (caption && g.state() !== 'title') { ctx.globalAlpha = Math.min(1, caption.life * 3); rr(ctx, W / 2 - 150, 124, 300, 32, 16, 'rgba(58,36,48,.8)'); text(ctx, caption.s, W / 2, 146, 18, palette.cream); ctx.globalAlpha = 1; }
+  },
+  result() { // 정수 하트 수만 넘김. 동점은 셸이 공동 순위 처리 (원작은 퀴즈 결정전 — 미구현)
+    const max = Math.max(...P.map(p => p.h)), n = P.filter(p => p.h === max).length;
+    return { scores: P.map(p => p.h), text: n > 1 ? '동점! (원작은 퀴즈로 결정)' : `${P.find(p => p.h === max).name} 하트 ${max}개!` };
+  } });
+</script></body></html>

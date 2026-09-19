@@ -247,6 +247,24 @@
                 padding: 14px 20px; /* Touch target enlargement */
             }
         }
+        .stadium-feature { display:grid; grid-template-columns:1.2fr .8fr; align-items:center; overflow:hidden; gap:28px; padding:38px 40px; margin-bottom:32px; background:#f5f0df; color:#182f3b; border:1px solid #e3d9bb; border-radius:16px; position:relative; }
+        .stadium-kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:#26786b; margin-bottom:15px; }
+        .stadium-feature h2 { font-family:Impact,'Arial Narrow',sans-serif; font-size:clamp(48px,6vw,78px); line-height:.88; letter-spacing:-.025em; margin-bottom:18px; }
+        .stadium-feature h2 span { color:#dc6c55; }
+        .stadium-feature p { font-size:14px; line-height:1.8; color:#52635d; max-width:445px; }
+        .stadium-meta { display:flex; flex-wrap:wrap; gap:8px; margin:19px 0; }
+        .stadium-meta span { border:1px solid #cbd0bb; border-radius:30px; padding:5px 10px; font-size:10px; font-weight:750; }
+        .stadium-link { display:inline-flex; align-items:center; gap:25px; background:#182f3b; color:#fff9e9; padding:13px 19px; border-radius:6px; text-decoration:none; font-size:13px; font-weight:750; transition:background .2s; }
+        .stadium-link:hover { background:#26786b; }
+        .stadium-poster { aspect-ratio:1.1; position:relative; display:flex; align-items:center; justify-content:center; min-width:0; }
+        .stadium-poster:before { content:''; position:absolute; inset:20% 0 13%; border:28px solid #e87259; outline:9px solid #182f3b; border-radius:50%; transform:rotate(-16deg); background:repeating-linear-gradient(0deg,#408f7d 0 22px,#4e9d87 22px 44px); box-shadow:0 19px 0 #182f3b; }
+        .stadium-poster:after { content:'READY, SET, PLAY!'; position:absolute; bottom:0; font-size:10px; font-weight:850; letter-spacing:.19em; color:#26786b; }
+        .stadium-mingo { font-size:105px; position:relative; transform:rotate(-8deg); filter:drop-shadow(3px 9px 0 #182f3b22); }
+        .stadium-pennant { position:absolute; top:6%; right:1%; background:#182f3b; border-radius:50%; width:69px; height:69px; display:grid; place-content:center; font-family:Impact,'Arial Narrow',sans-serif; color:#f5f0df; font-size:26px; transform:rotate(10deg); }
+        .stadium-pennant small { font-family:var(--font-sans); font-size:8px; text-align:center; letter-spacing:.13em; }
+        a:focus-visible { outline:3px solid #68c7b3; outline-offset:5px; }
+        @media (max-width:700px) { .stadium-feature { grid-template-columns:1fr; padding:29px 25px; gap:10px; } .stadium-feature h2 { font-size:61px; } .stadium-poster { display:none; } .stadium-feature p { font-size:13px; } }
+        @media (prefers-reduced-motion:reduce) { *, *:before, *:after { animation:none!important; transition:none!important; } }
     </style>
 </head>
 <body>
@@ -256,11 +274,21 @@
     <header>
         <div class="logo-emoji">🦩</div>
         <h1>Flaming Games</h1>
-        <p class="subtitle">순수 웹 브라우저 엔진 기술로 설계된 복고풍 2D/3D 게임 컬렉션입니다. 별도의 설치 없이 모바일과 PC 기기에서 바로 터치 및 마우스로 즐길 수 있습니다.</p>
-        <span class="badge">🎮 Mobile Touch Friendly</span>
+        <p class="subtitle">설치 없이 즐기는 플라밍고 2D/3D 게임 컬렉션. 혼자 하는 모험부터 한 키보드로 함께하는 스타디움 운동회까지, 지금 한 판 시작하세요.</p>
+        <span class="badge">19개 게임 컬렉션 · Stadium 미니게임 21종</span>
     </header>
 
     <main>
+        <section class="stadium-feature" aria-labelledby="stadium-title">
+            <div>
+                <div class="stadium-kicker">NEW TO FLAMING GAMES · THE MINI-GAME CLUB</div>
+                <h2 id="stadium-title">FLAMINGO<br><span>STADIUM.</span></h2>
+                <p>다 같이 모여, 한 판 더. 포켓몬 스타디움 키즈 클럽에서 영감받은 21가지 미니게임을 만나보세요. 스플래시, 허들 레이스, 링아웃은 새로운 3D 경기장으로!</p>
+                <div class="stadium-meta"><span>21 MINI-GAMES</span><span>3 GAMES IN 3D</span><span>1–4P · 키보드 함께하기</span></div>
+                <a class="stadium-link" href="./flamingo-stadium/">스타디움 입장하기 <span aria-hidden="true">↗</span></a>
+            </div>
+            <div class="stadium-poster" aria-hidden="true"><span class="stadium-mingo">🦩</span><span class="stadium-pennant">21<small>MINI-GAMES</small></span></div>
+        </section>
         <div class="games-grid">
             <!-- 1. Flamingo Chess -->
             <div class="game-card">
