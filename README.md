@@ -114,7 +114,7 @@ graph TD
 * **장르**: 포켓몬 스타디움 1·2 키즈 클럽에서 영감받은 21종의 로컬 멀티플레이 미니게임. 한 키보드로 1~4명이 함께하며 빈자리는 CPU가 채웁니다.
 * **3D 리메이크**: 플라밍고 스플래시, 달려라 플라밍고, 빙글빙글 링아웃. 기존 규칙을 유지하면서 3D 경기장과 2D 전환을 제공합니다. 나머지 18종은 클래식 2D입니다.
 * **진입 경로**: [`flamingo-stadium/index.html`](./flamingo-stadium/index.html). 배포 후 포털의 Stadium 배너 또는 `/flamingo-stadium/`에서 진입합니다.
-* **이관 출처**: [minwoo19930301/flamingo-stadium](https://github.com/minwoo19930301/flamingo-stadium)의 [`a48b22be4494773f5c6beefe3d6cc7718ac2f266`](https://github.com/minwoo19930301/flamingo-stadium/commit/a48b22be4494773f5c6beefe3d6cc7718ac2f266). 게임 21개·공용 코드·스펙·스크립트를 포함하며 원본 저장소는 그대로 유지합니다.
+* **이관 출처**: [minwoo19930301/flamingo-stadium](https://github.com/flam-ing/flamingo-stadium)의 [`a48b22be4494773f5c6beefe3d6cc7718ac2f266`](https://github.com/flam-ing/flamingo-stadium/commit/a48b22be4494773f5c6beefe3d6cc7718ac2f266). 게임 21개·공용 코드·스펙·스크립트를 포함하며 원본 저장소는 그대로 유지합니다.
 * **개발 안내**: 통합본 수정은 이 저장소의 `flamingo-stadium/`에서 합니다. 키 설정·구조·검증은 [Stadium README](./flamingo-stadium/README.md)를 참고하세요.
 
 > 10–18번은 각 개별 저장소(`flam-ing/flamingo-*`)에서 빌드한 결과물을 이 저장소의 서브폴더로 배포합니다. 소스 수정은 개별 저장소에서, 배포는 여기서.
@@ -129,6 +129,11 @@ graph TD
 
 
 ---
+
+## 통합 포털
+
+- [Flamingo Stadium](https://flaming-games.vercel.app/flamingo-stadium/)
+- [Flamingo Party](https://flaming-games.vercel.app/flamingo-party/)
 
 ## 로컬 실행
 
